@@ -408,7 +408,54 @@ elif menu == "🌱 Quản lý Cây trồng":
 # =========================
 # AI ASSISTANT
 # =========================
+elif menu == "📸 Camera Chẩn đoán":
+    st.title("📸 Camera Chẩn đoán & Cảnh báo Chuyên sâu")
+    
+    # 1. CHỌN NGUỒN ẢNH
+    option = st.selectbox("Chọn nguồn ảnh", ["Chụp ảnh từ Camera", "Tải ảnh lên từ bộ nhớ"])
+    
+    if option == "Chụp ảnh từ Camera":
+        img_file = st.camera_input("Đưa lá cây bị bệnh vào khung hình")
+    else:
+        img_file = st.file_uploader("Chọn ảnh từ máy", type=["jpg", "png", "jpeg"])
 
+    if img_file:
+        image = Image.open(img_file)
+        
+        if st.button("🚀 Bắt đầu Phân tích chuyên sâu"):
+            with st.spinner("AI đang đối chiếu dữ liệu thời tiết và hình ảnh..."):
+                try:
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    
+                    # Lấy thông tin thời tiết hiện tại để làm dữ liệu đầu vào cho AI
+                    weather_info = f"Nhiệt độ: {weather['temp']}°C, Độ ẩm: {weather['hum']}%, Điều kiện: {weather['desc']}" if weather else "Không có dữ liệu thời tiết"
+                    
+                    prompt = f"""
+                    Bạn là một Chuyên gia Bảo vệ Thực vật và Kỹ sư Nông nghiệp Công nghệ cao.
+                    Dữ liệu môi trường hiện tại: {weather_info}.
+                    
+                    Nhiệm vụ: Phân tích hình ảnh lá cây này và đưa ra CẢNH BÁO CHUYÊN SÂU:
+                    1. XÁC ĐỊNH: Tên bệnh/sâu/tình trạng thiếu vi chất.
+                    2. PHÂN TÍCH NGUY CƠ: Với điều kiện thời tiết hiện tại ({weather_info}), bệnh này có khả năng bùng phát thành dịch không? Tại sao?
+                    3. PHÁC ĐỒ ĐIỀU TRỊ 3 BƯỚC:
+                       - Bước 1 (Cách ly/Xử lý vật lý): Ví dụ ngắt lá, tỉa cành...
+                       - Bước 2 (Điều trị Hữu cơ/Sinh học): Nêu rõ tên hoạt chất (Trichoderma, Nano bạc, dịch tỏi ớt...).
+                       - Bước 3 (Can thiệp Hóa học): Chỉ dùng khi bệnh nặng (Nêu tên thuốc cụ thể như Metalaxyl, Abamectin...).
+                    4. DỰ BÁO: Trong 3 ngày tới nếu thời tiết tiếp tục thế này, cây sẽ ra sao?
+                    
+                    Yêu cầu: Trả lời chuyên nghiệp, khoa học, ngôn ngữ tiếng Việt dễ hiểu cho nông dân.
+                    """
+                    
+                    response = model.generate_content([prompt, image])
+                    
+                    st.success("✅ KẾT QUẢ PHÂN TÍCH CHUYÊN SÂU")
+                    st.markdown(response.text)
+                    
+                    # Lưu vào lịch sử để theo dõi
+                    st.info("💡 Lời khuyên: Bạn nên lưu lại ảnh này vào Nhật ký cây trồng để theo dõi tiến triển bệnh.")
+                    
+                except Exception as e:
+                    st.error(f"Lỗi hệ thống: {e}")
 elif menu == "💬 AI Assistant":
 
     st.title("💬 Trợ lý Nông nghiệp")
