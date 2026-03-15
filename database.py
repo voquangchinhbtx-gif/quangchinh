@@ -1,4 +1,3 @@
-```python
 import json
 import os
 from datetime import datetime
@@ -152,4 +151,4 @@ def add_log(data, plant_id, action_type, content):
     save_data(data)
 
     return data
-```
+
