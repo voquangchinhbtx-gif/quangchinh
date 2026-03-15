@@ -391,93 +391,87 @@ elif menu == "🌱 Quản lý Cây trồng":
 # AI CAMERA VÀ AI ASSISTANT
 # =========================
 elif menu == "📸 Camera Chẩn đoán":
-    st.title("📸 Camera Chẩn đoán & Cảnh báo Chuyên sâu")
+    st.title("📸 Camera Chẩn đoán & Phân tích Thực địa")
     
-    # 1. CHỌN NGUỒN ẢNH
-    option = st.selectbox("Chọn nguồn ảnh", ["Chụp ảnh từ Camera", "Tải ảnh lên từ bộ nhớ"])
-    
-    if option == "Chụp ảnh từ Camera":
-        img_file = st.camera_input("Đưa lá cây bị bệnh vào khung hình")
-    else:
-        img_file = st.file_uploader("Chọn ảnh từ máy", type=["jpg", "png", "jpeg"])
+    # Hướng dẫn chi tiết cho người dùng
+    st.info("""
+    💡 **Hướng dẫn chụp ảnh:**
+    1. Đảm bảo đủ ánh sáng để AI thấy rõ màu sắc lá.
+    2. Chụp cận cảnh vết bệnh, sâu hại hoặc mặt dưới của lá.
+    3. Nếu có thể, hãy để một phần lá lành trong khung hình để AI đối chiếu.
+    """)
+
+    # 1. GIAO DIỆN NHẬN DỮ LIỆU HÌNH ẢNH
+    img_file = st.camera_input("Đưa lá cây hoặc sâu hại vào khung hình để chẩn đoán")
 
     if img_file:
+        # Xử lý và hiển thị ảnh đã chụp
         image = Image.open(img_file)
         
-        if st.button("🚀 Bắt đầu Phân tích chuyên sâu"):
-            with st.spinner("AI đang đối chiếu dữ liệu thời tiết và hình ảnh..."):
+        # Hiển thị ảnh trong một khung cố định
+        st.image(image, caption="Hình ảnh thực tế đang được phân tích", width=500)
+
+        if st.button("🚀 Bắt đầu Phân tích Chuyên sâu"):
+            with st.spinner("🤖 AI đang nhận diện loại cây và đối chiếu dữ liệu môi trường..."):
                 try:
-                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    # Khởi tạo mô hình Gemini 1.5 Flash
+                    model = genai.GenerativeModel("gemini-1.5-flash")
                     
-                    # Lấy thông tin thời tiết hiện tại để làm dữ liệu đầu vào cho AI
-                    weather_info = f"Nhiệt độ: {weather['temp']}°C, Độ ẩm: {weather['hum']}%, Điều kiện: {weather['desc']}" if weather else "Không có dữ liệu thời tiết"
-                    
+                    # 1️⃣ BẢO VỆ BIẾN WEATHER: Chống crash tuyệt đối khi weather = None
+                    if weather and isinstance(weather, dict):
+                        # Sử dụng .get() để lấy agri_warnings một cách an toàn
+                        warnings_list = weather.get('agri_warnings', [])
+                        w_info = f"""
+                        THÔNG TIN THỜI TIẾT THỰC ĐỊA:
+                        - Nhiệt độ đo được: {weather.get('temp', 'N/A')}°C
+                        - Độ ẩm không khí: {weather.get('hum', 'N/A')}%
+                        - Tình trạng bầu trời: {weather.get('desc', 'N/A')}
+                        - Cảnh báo nấm bệnh từ trạm quan trắc: {', '.join(warnings_list) if warnings_list else 'Không có cảnh báo'}
+                        """
+                    else:
+                        w_info = "LƯU Ý: Không có dữ liệu thời tiết thực địa (Chế độ ngoại tuyến), AI sẽ chỉ dựa trên hình ảnh."
+
+                    # 2️⃣ THIẾT LẬP PROMPT KỸ THUẬT (GIỮ NGUYÊN RUỘT CHI TIẾT)
                     prompt = f"""
                     Bạn là một Chuyên gia Bảo vệ Thực vật và Kỹ sư Nông nghiệp Công nghệ cao.
-                    Dữ liệu môi trường hiện tại: {weather_info}.
+                    Sử dụng dữ liệu môi trường sau đây để tăng độ chính xác cho chẩn đoán:
+                    {w_info}
+
+                    Dựa trên hình ảnh lá cây/sâu hại được cung cấp, hãy lập một bản báo cáo kỹ thuật đầy đủ gồm:
+
+                    1. **NHẬN DIỆN CÂY TRỒNG**: Đây chính xác là loại cây gì? (Ví dụ: Ớt Aji Charapita, Cà chua, Hoa hồng...).
                     
-                    Nhiệm vụ: Phân tích hình ảnh lá cây này và đưa ra CẢNH BÁO CHUYÊN SÂU:
-                    1. XÁC ĐỊNH: Tên bệnh/sâu/tình trạng thiếu vi chất.
-                    2. PHÂN TÍCH NGUY CƠ: Với điều kiện thời tiết hiện tại ({weather_info}), bệnh này có khả năng bùng phát thành dịch không? Tại sao?
-                    3. PHÁC ĐỒ ĐIỀU TRỊ 3 BƯỚC:
-                       - Bước 1 (Cách ly/Xử lý vật lý): Ví dụ ngắt lá, tỉa cành...
-                       - Bước 2 (Điều trị Hữu cơ/Sinh học): Nêu rõ tên hoạt chất (Trichoderma, Nano bạc, dịch tỏi ớt...).
-                       - Bước 3 (Can thiệp Hóa học): Chỉ dùng khi bệnh nặng (Nêu tên thuốc cụ thể như Metalaxyl, Abamectin...).
-                    4. DỰ BÁO: Trong 3 ngày tới nếu thời tiết tiếp tục thế này, cây sẽ ra sao?
-                    
-                    Yêu cầu: Trả lời chuyên nghiệp, khoa học, ngôn ngữ tiếng Việt dễ hiểu cho nông dân.
+                    2. **CHẨN ĐOÁN TÌNH TRẠNG**: 
+                       - Tên bệnh hại/Sâu hại/Rối loạn dinh dưỡng.
+                       - Mô tả các triệu chứng quan sát được trên ảnh để khẳng định chẩn đoán.
+
+                    3. **PHÂN TÍCH RỦI RO THỜI TIẾT**: 
+                       - Giải thích mối liên hệ: Tại sao với nhiệt độ và độ ẩm hiện tại ({weather.get('hum', 'N/A') if weather else 'N/A'}%), tình trạng này lại xuất hiện hoặc có nguy cơ bùng phát mạnh hơn?
+
+                    4. **PHÁC ĐỒ ĐIỀU TRỊ 3 BƯỚC CHUYÊN SÂU**:
+                       - **Bước 1 (Xử lý vật lý/Canh tác)**: Cách ly cây, cắt tỉa bộ phận bệnh, hoặc điều chỉnh chế độ tưới tiêu/ánh sáng ngay lập tức.
+                       - **Bước 2 (Giải pháp Sinh học/Hữu cơ - Ưu tiên)**: Nêu rõ hoạt chất sinh học (ví dụ: Bacillus thuringiensis, Trichoderma, Nano bạc, Neem oil...) và cách pha chế/phun.
+                       - **Bước 3 (Can thiệp Hóa học - Dự phòng cuối)**: Chỉ nêu tên hoạt chất khi bệnh đã ở ngưỡng nguy hiểm (Ví dụ: Metalaxyl, Abamectin, Mancozeb...). Lưu ý liều lượng an toàn cho loại cây này.
+
+                    **YÊU CẦU ĐỊNH DẠNG**: 
+                    - Trả lời bằng tiếng Việt.
+                    - Định dạng câu trả lời bằng Markdown với các tiêu đề rõ ràng (###), in đậm (**) và danh sách gạch đầu dòng để báo cáo chuyên nghiệp.
                     """
-                    
+
+                    # 3️⃣ GỬI DỮ LIỆU ĐA PHƯƠNG THỨC
                     response = model.generate_content([prompt, image])
                     
-                    st.success("✅ KẾT QUẢ PHÂN TÍCH CHUYÊN SÂU")
-                    st.markdown(response.text)
+                    # 4️⃣ BẢO VỆ RESPONSE.TEXT: Tránh lỗi khi AI chặn hoặc trả về rỗng
+                    result = response.text if hasattr(response, "text") else "⚠️ AI không thể trích xuất nội dung văn bản. Vui lòng thử chụp lại ảnh rõ hơn."
+
+                    # 5️⃣ HIỂN THỊ KẾT QUẢ
+                    st.divider()
+                    with st.chat_message("assistant"):
+                        st.markdown("### 📝 BÁO CÁO PHÂN TÍCH CHUYÊN GIA")
+                        st.markdown(result)
                     
-                    # Lưu vào lịch sử để theo dõi
-                    st.info("💡 Lời khuyên: Bạn nên lưu lại ảnh này vào Nhật ký cây trồng để theo dõi tiến triển bệnh.")
+                    st.success("✅ Phân tích hoàn tất. Các đề xuất dựa trên dữ liệu hình ảnh và khí tượng tại chỗ.")
                     
                 except Exception as e:
-                    st.error(f"Lỗi hệ thống: {e}")
-elif menu == "💬 AI Assistant":
-
-    st.title("💬 Trợ lý Nông nghiệp")
-
-    plant_count = len(data.get("plants", []))
-
-    st.info(f"🌱 Hệ thống đang theo dõi {plant_count} cây trồng.")
-
-    for chat in data.get("chat_history", []):
-
-        with st.chat_message("user"):
-            st.write(chat["user"])
-
-        with st.chat_message("assistant"):
-            st.write(chat["ai"])
-
-
-    if prompt := st.chat_input("Hỏi về cây trồng..."):
-
-        with st.chat_message("user"):
-            st.write(prompt)
-
-        if weather:
-
-            ai_res = f"Nhiệt độ hiện tại {weather['temp']}°C. "
-
-            if weather["temp"] > 30:
-                ai_res += "Trời khá nóng, nên chú ý tưới nước."
-
-            elif weather["hum"] > 85:
-                ai_res += "Độ ẩm cao, nên phòng nấm bệnh."
-
-            else:
-                ai_res += "Thời tiết thuận lợi cho cây."
-
-        else:
-
-            ai_res = "Chưa lấy được dữ liệu thời tiết."
-
-        data = add_chat(data, prompt, ai_res)
-
-        with st.chat_message("assistant"):
-            st.write(ai_res)
+                    st.error(f"⚠️ Hệ thống AI gặp sự cố: {str(e)}")
+                    st.info("Kiểm tra lại kết nối mạng hoặc API Key Gemini.")
