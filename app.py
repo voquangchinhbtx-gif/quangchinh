@@ -15,7 +15,13 @@ except:
     # Key dự phòng nếu không tìm thấy trong secrets
     API_KEY = "66ad043d6024749fa4bf92f0a6782397"
     LAT, LON = 16.4637, 107.5909  # Tọa độ của Huế
+# Cấu hình Gemini AI (Dành cho nhận diện hình ảnh)
+try:
+    GENAI_KEY = st.secrets["GEMINI_API_KEY"]
+except:
+    GENAI_KEY = "DÁN_API_KEY_CỦA_BẠN_VÀO_ĐÂY" # Lấy tại https://aistudio.google.com/
 
+genai.configure(api_key=GENAI_KEY)
 # =========================
 # DANH MỤC VẬT TƯ
 # =========================
