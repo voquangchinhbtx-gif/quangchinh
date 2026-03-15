@@ -227,7 +227,7 @@ with st.sidebar:
 
     st.title("🌶️ Aji Farm AI")
 
-    menu = st.radio(
+    menu = st.radio
         "Menu",
         
             "📊 Dashboard Chuyên sâu",
