@@ -1,6 +1,8 @@
 import streamlit as st
 import requests
 import math
+import google.generativeai as genai
+from PIL import Image
 from datetime import datetime
 from database import load_data, add_plant, delete_plant, add_chat
 
