@@ -243,6 +243,7 @@ elif menu == "📸 Camera AI":
     # Giao diện chọn nguồn ảnh
     src_option = st.radio("Chọn nguồn hình ảnh:", ["Máy ảnh (Chụp trực tiếp)", "Tải ảnh từ thư viện"])
     
+    img_file = None # Khởi tạo biến
     if src_option == "Máy ảnh (Chụp trực tiếp)":
         img_file = st.camera_input("Chụp lá cây hoặc vết bệnh")
     else:
@@ -250,9 +251,9 @@ elif menu == "📸 Camera AI":
 
     if img_file:
         image = Image.open(img_file)
-        st.image(image, caption="Ảnh đang phân tích", use_container_width=True)
+        st.image(image, caption="Ảnh đang chờ xử lý", use_container_width=True)
 
-    if st.button("🚀 Phân tích & Cảnh báo Chuyên sâu"):
+        if st.button("🚀 Phân tích & Cảnh báo Chuyên sâu"):
             with st.spinner("AI đang soi bệnh và kiểm tra thời tiết..."):
                 try:
                     # Gọi mô hình Gemini
@@ -262,21 +263,27 @@ elif menu == "📸 Camera AI":
                     w_info = f"Nhiệt độ: {weather['temp']}°C, Độ ẩm: {weather['hum']}%, Mô tả: {weather['desc']}" if weather else "Không có dữ liệu thời tiết"
                     
                     prompt = f"""
-                    Bạn là Chuyên gia Bảo vệ Thực vật. Dữ liệu thời tiết hiện tại: {w_info}.
-                    Hãy phân tích ảnh này:
-                    1. XÁC ĐỊNH: Tên bệnh/sâu hoặc thiếu chất.
-                    2. CẢNH BÁO CHUYÊN SÂU: Với thời tiết {w_info}, bệnh này có dễ lây lan thành dịch không?
-                    3. PHÁC ĐỒ: Bước 1 (Vật lý), Bước 2 (Hữu cơ), Bước 3 (Hóa học nếu nặng).
-                    4. LỜI KHUYÊN: Cách phòng tránh cho các cây khác trong vườn.
-                    Trả lời bằng tiếng Việt, ngắn gọn nhưng đầy đủ chuyên môn.
+                    Bạn là Chuyên gia Bảo vệ Thực vật chuyên về cây ớt và cây trồng cạn. 
+                    Dữ liệu thời tiết hiện tại: {w_info}.
+                    Hãy phân tích ảnh này và đưa ra chẩn đoán CHUYÊN SÂU:
+                    1. XÁC ĐỊNH: Tên bệnh/sâu hoặc tình trạng thiếu chất cụ thể.
+                    2. CẢNH BÁO: Với thời tiết {w_info}, bệnh này có dễ lây lan thành dịch không? Tại sao?
+                    3. PHÁC ĐỒ ĐIỀU TRỊ: 
+                       - Bước 1 (Vật lý): Cách ly, cắt tỉa.
+                       - Bước 2 (Hữu cơ): Hoạt chất sinh học khuyến nghị.
+                       - Bước 3 (Hóa học): Thuốc đặc trị nếu tình trạng trở nặng.
+                    4. LỜI KHUYÊN PHÒNG BỆNH: Chỉnh sửa chế độ tưới tiêu/phân bón.
+                    Trả lời bằng tiếng Việt, định dạng Markdown rõ ràng.
                     """
                     
                     response = model.generate_content([prompt, image])
-                    st.success("✅ KẾT QUẢ CHẨN ĐOÁN")
+                    st.success("✅ KẾT QUẢ CHẨN ĐOÁN CHUYÊN SÂU")
                     st.markdown(response.text)
                     
                 except Exception as e:
-                    st.error(f"Lỗi: {e}. Hãy đảm bảo bạn đã dán GEMINI_API_KEY vào Secrets.")
+                    st.error(f"Lỗi: {e}. Hãy đảm bảo bạn đã cấu hình GEMINI_API_KEY trong Secrets.")
+
+# elif menu == "💬 AI Assistant":
         ]
     )
 
