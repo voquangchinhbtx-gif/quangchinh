@@ -1,21 +1,35 @@
 import json
 import os
 
+FILE_PATH = 'farm_data.json'
+
 def load_data():
-    file_path = 'farm_data.json'
-    if not os.path.exists(file_path) or os.stat(file_path).st_size == 0:
-        return {"crops": []} 
+    """Đọc dữ liệu từ file JSON"""
+    if not os.path.exists(FILE_PATH) or os.stat(FILE_PATH).st_size == 0:
+        return {"crops": []}
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(FILE_PATH, 'r', encoding='utf-8') as f:
             return json.load(f)
     except:
         return {"crops": []}
 
+def save_data(data):
+    """Lưu dữ liệu vào file JSON - File garden.py cần hàm này!"""
+    with open(FILE_PATH, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
 def get_plants():
-    """Hàm này là cái mà file dashboard.py đang tìm!"""
+    """Lấy danh sách cây trồng cho dashboard.py"""
     data = load_data()
-    # Trả về danh sách cây trồng, nếu không có thì trả về danh sách rỗng
     return data.get("crops", [])
 
-# Nếu các file khác có đòi hỏi thêm hàm get_crop_info hay get_crop_name, 
-# bạn cũng nên khai báo sẵn ở đây để tránh lỗi tiếp theo.
+def add_plant(plant_name, planting_date):
+    """Thêm cây trồng mới - File garden.py cần hàm này!"""
+    data = load_data()
+    new_plant = {
+        "id": len(data["crops"]) + 1,
+        "name": plant_name,
+        "date": planting_date
+    }
+    data["crops"].append(new_plant)
+    save_data(data)
