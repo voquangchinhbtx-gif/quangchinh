@@ -229,7 +229,7 @@ with st.sidebar:
 
     menu = st.radio(
         "Menu",
-        [
+        
             "📊 Dashboard Chuyên sâu",
             "🌱 Quản lý Cây trồng",
             "📸 Camera AI",
