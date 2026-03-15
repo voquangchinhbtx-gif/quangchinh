@@ -2,163 +2,297 @@ import streamlit as st
 import requests
 import math
 from datetime import datetime
-from database import load_data, save_data, add_plant, delete_plant, add_chat, add_log
+from database import load_data, add_plant, delete_plant, add_chat
 
-st.set_page_config(page_title="AI Smart Farm", layout="wide")
+# =========================
+# CẤU HÌNH
+# =========================
 
-CITY = "Hue"
-
-# Lấy API KEY từ secrets (an toàn)
-try:
-    API_KEY = st.secrets["OPENWEATHER_API_KEY"]
-except:
-    API_KEY = "YOUR_OPENWEATHER_API_KEY"
+API_KEY = "66ad043d6024749fa4bf92f0a6782397"
+LAT, LON = 16.4637, 107.5909
 
 
-@st.cache_data(ttl=600)
-def get_real_weather():
-    try:
-        url = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={API_KEY}&units=metric&lang=vi"
-        r = requests.get(url, timeout=10)
-        d = r.json()
+# =========================
+# DANH MỤC VẬT TƯ
+# =========================
 
-        if "main" not in d:
-            return None
+FARM_RESOURCES = {
 
-        return {
-            "temp": d["main"]["temp"],
-            "hum": d["main"]["humidity"],
-            "rain": d.get("rain", {}).get("1h", 0),
-            "desc": d["weather"][0]["description"]
-        }
-    except:
-        return None
+    "Dinh dưỡng": {
+        "Hữu cơ (Ưu tiên)": "Phân gà oai, Đạm cá, Humic Acid, Dịch chuối, Phân trùn quế.",
+        "Vô cơ (Bổ sung)": "NPK 20-20-15, Kali Sunfat."
+    },
 
+    "Trị bệnh": {
+        "Sinh học (Ưu tiên)": "Trichoderma, Nano Bạc, Tinh dầu thảo mộc, Bordeaux.",
+        "Hóa học (Khi bệnh nặng)": "Metalaxyl, Validamycin."
+    },
 
-def calc_vpd(temp, humidity):
-    svp = 0.61078 * math.exp((17.27 * temp) / (temp + 237.3))
-    avp = svp * (humidity / 100)
-    return round(svp - avp, 2)
+    "Trị côn trùng": {
+        "Sinh học (Ưu tiên)": "BT, Dịch tỏi ớt, Nấm xanh Metarhizium.",
+        "Hóa học (Khi bùng dịch)": "Abamectin."
+    }
 
-
-CROP_KNOWLEDGE = {
-
-    "Ớt": [
-        {
-            "stage": "Cây con",
-            "days": (0, 20),
-            "organic": "Dịch chuối + đạm cá",
-            "chemical": "NPK 20-20-15"
-        },
-        {
-            "stage": "Sinh trưởng",
-            "days": (21, 50),
-            "organic": "Đạm cá + humic",
-            "chemical": "NPK 16-16-8"
-        },
-        {
-            "stage": "Ra hoa",
-            "days": (51, 80),
-            "organic": "Chuối + canxi",
-            "chemical": "NPK 15-5-20"
-        }
-    ],
-
-    "Cà chua": [
-        {
-            "stage": "Cây con",
-            "days": (0, 20),
-            "organic": "Humic + rong biển",
-            "chemical": "NPK 20-20-15"
-        },
-        {
-            "stage": "Sinh trưởng",
-            "days": (21, 45),
-            "organic": "Đạm cá",
-            "chemical": "NPK 16-16-8"
-        },
-        {
-            "stage": "Ra hoa",
-            "days": (46, 80),
-            "organic": "Chuối + canxi",
-            "chemical": "NPK 15-5-20"
-        }
-    ],
-
-    "Chung": [
-        {
-            "stage": "Sinh trưởng",
-            "days": (0, 999),
-            "organic": "Phân hữu cơ hoai mục",
-            "chemical": "NPK cân đối"
-        }
-    ]
 }
 
 
-data = load_data()
+# =========================
+# TRI THỨC CÂY TRỒNG
+# =========================
 
-menu = st.sidebar.radio(
-    "Menu",
-    [
-        "📊 Dashboard",
-        "🌱 Quản lý Cây trồng",
-        "💬 Trợ lý AI Assistant"
+CROP_KNOWLEDGE = {
+
+    "Ớt Aji Charapita": [
+
+        {
+            "stage": "Cây con",
+            "days": (0,20),
+
+            "organic": "Tưới Humic + Trichoderma để kích rễ.",
+
+            "backup": "Nếu cây héo rũ, dùng Metalaxyl tưới gốc.",
+
+            "note": "Phủ gốc bằng xơ dừa để giữ ẩm."
+        },
+
+        {
+            "stage": "Phát triển lá",
+            "days": (21,60),
+
+            "organic": "Phun đạm cá + dịch tỏi ớt ngừa sâu.",
+
+            "backup": "Nếu bọ trĩ bùng phát, dùng Abamectin liều nhẹ.",
+
+            "note": "Bấm ngọn để cây phân cành."
+        },
+
+        {
+            "stage": "Ra hoa / Trái",
+            "days": (61,150),
+
+            "organic": "Bón phân trùn quế + dịch chuối.",
+
+            "backup": "Nếu rụng hoa, bổ sung Canxi-Bo.",
+
+            "note": "Không tưới đẫm buổi tối."
+        }
+
+    ],
+
+    # BỔ SUNG PHÁC ĐỒ CHUNG
+    "Chung": [
+
+        {
+            "stage": "Cây non",
+            "days": (0,30),
+
+            "organic": "Tưới Humic + Trichoderma kích rễ.",
+
+            "backup": "Nếu héo rũ dùng Metalaxyl nhẹ.",
+
+            "note": "Giữ ẩm đất, tránh nắng gắt."
+        },
+
+        {
+            "stage": "Sinh trưởng",
+            "days": (31,90),
+
+            "organic": "Bón phân hữu cơ hoai + đạm cá.",
+
+            "backup": "Nếu sâu ăn lá dùng BT.",
+
+            "note": "Theo dõi côn trùng định kỳ."
+        },
+
+        {
+            "stage": "Ra hoa / kết trái",
+            "days": (91,200),
+
+            "organic": "Bổ sung Kali + dịch chuối.",
+
+            "backup": "Nếu rụng hoa bổ sung Canxi-Bo.",
+
+            "note": "Không tưới quá nhiều nước."
+        }
+
     ]
+
+}
+
+
+# =========================
+# AI CẢNH BÁO
+# =========================
+
+def ai_crop_warning(stage, weather):
+
+    if not weather:
+        return None
+
+    temp = weather["temp"]
+    hum = weather["hum"]
+    rain = weather["rain"]
+
+    if hum > 85:
+        return "🦠 Độ ẩm cao → nguy cơ nấm bệnh. Khuyến nghị: Trichoderma hoặc Nano Bạc."
+
+    if temp > 34:
+        return "🔥 Nhiệt độ cao → cây dễ sốc nhiệt. Nên tăng tưới và che nắng."
+
+    if rain > 5:
+        return "🌧 Mưa nhiều → nguy cơ thối rễ. Nên rải vôi và kiểm tra thoát nước."
+
+    if stage == "Ra hoa / Trái" and hum > 80:
+        return "⚠ Giai đoạn ra hoa gặp ẩm cao → dễ rụng hoa."
+
+    return None
+
+
+# =========================
+# TÍNH VPD
+# =========================
+
+def calculate_vpd(temp, humidity):
+
+    svp = 0.61078 * math.exp((17.27 * temp) / (temp + 237.3))
+    avp = svp * (humidity / 100)
+
+    return svp - avp
+
+
+# =========================
+# LẤY THỜI TIẾT (CACHE)
+# =========================
+
+@st.cache_data(ttl=600)
+def get_real_weather():
+
+    url = f"http://api.openweathermap.org/data/2.5/weather?lat={LAT}&lon={LON}&appid={API_KEY}&units=metric&lang=vi"
+
+    try:
+
+        res = requests.get(url, timeout=10)
+
+        if res.status_code == 200:
+
+            d = res.json()
+
+            return {
+                "temp": d["main"]["temp"],
+                "hum": d["main"]["humidity"],
+                "rain": d.get("rain", {}).get("1h", 0),
+                "desc": d["weather"][0]["description"]
+            }
+
+    except:
+        pass
+
+    return None
+
+
+# =========================
+# STREAMLIT CONFIG
+# =========================
+
+st.set_page_config(
+    page_title="Aji Farm Pro",
+    layout="wide",
+    page_icon="🌶️"
 )
+
+data = load_data()
 
 weather = get_real_weather()
 
-# ================= DASHBOARD =================
 
-if menu == "📊 Dashboard":
+# =========================
+# SIDEBAR
+# =========================
 
-    st.title("📊 Bảng điều khiển Nông trại")
+with st.sidebar:
+
+    st.title("🌶️ Aji Farm AI")
+
+    menu = st.radio(
+        "Menu",
+        [
+            "📊 Dashboard Chuyên sâu",
+            "🌱 Quản lý Cây trồng",
+            "💬 AI Assistant"
+        ]
+    )
+
+
+# =========================
+# DASHBOARD
+# =========================
+
+if menu == "📊 Dashboard Chuyên sâu":
+
+    st.title("📊 Quan trắc VPD & Thời tiết")
 
     if weather:
 
-        temp = weather["temp"]
-        hum = weather["hum"]
-        rain = weather["rain"]
+        c1,c2,c3,c4 = st.columns(4)
 
-        vpd = calc_vpd(temp, hum)
+        c1.metric("Nhiệt độ", f"{weather['temp']}°C")
+        c2.metric("Độ ẩm", f"{weather['hum']}%")
+        c3.metric("Mưa", f"{weather['rain']}mm")
+        c4.metric("Thời tiết", weather['desc'].capitalize())
 
-        c1, c2, c3, c4 = st.columns(4)
+        vpd = calculate_vpd(weather['temp'], weather['hum'])
 
-        c1.metric("🌡 Nhiệt độ", f"{temp} °C")
-        c2.metric("💧 Độ ẩm", f"{hum} %")
-        c3.metric("🌧 Lượng mưa", f"{rain} mm")
-        c4.metric("VPD", vpd)
-
-        st.caption(weather["desc"])
+        st.markdown(f"### Chỉ số VPD: `{vpd:.2f} kPa`")
 
         if vpd < 0.5:
-            st.warning("VPD thấp → môi trường ẩm, nguy cơ nấm bệnh")
+            st.error("Nguy cơ nấm bệnh cao")
 
-        if vpd > 2:
-            st.warning("VPD cao → cây thoát hơi nước mạnh, dễ khô hạn")
+        elif vpd > 2:
+            st.warning("Không khí khô")
+
+        else:
+            st.success("Điều kiện sinh trưởng tốt")
 
     else:
+
         st.error("Không lấy được dữ liệu thời tiết")
 
 
-# ================= QUẢN LÝ CÂY =================
+# =========================
+# QUẢN LÝ CÂY
+# =========================
 
 elif menu == "🌱 Quản lý Cây trồng":
 
-    st.title("🌱 Quản lý Cây trồng")
+    st.title("🌱 Quản lý Vườn")
 
-    with st.form("addplant"):
+    with st.expander("➕ Thêm cây mới"):
 
         name = st.text_input("Tên cây")
+
+        crop_type = st.selectbox(
+            "Loại cây",
+            list(CROP_KNOWLEDGE.keys()) + ["Khác"]
+        )
+
         date = st.date_input("Ngày trồng")
 
-        submitted = st.form_submit_button("Thêm cây")
+        if st.button("Xác nhận lưu"):
 
-        if submitted and name:
-            data = add_plant(data, name, date.strftime("%Y-%m-%d"))
-            st.success("Đã thêm cây")
-            st.rerun()
+            if name.strip() == "":
+                st.warning("Vui lòng nhập tên cây")
+
+            else:
+
+                data = add_plant(
+                    data,
+                    f"{name} ({crop_type})",
+                    date.strftime("%Y-%m-%d")
+                )
+
+                st.success("Đã thêm cây")
+                st.rerun()
+
 
     plants = data.get("plants", [])
 
@@ -168,181 +302,139 @@ elif menu == "🌱 Quản lý Cây trồng":
 
             with st.container(border=True):
 
-                col_info, col_ai, col_action = st.columns([1, 2, 1])
+                col_info,col_ai,col_action = st.columns([1,2,1])
 
                 with col_info:
 
                     st.subheader(f"🌿 {p['name']}")
 
-                    age = max(
-                        0,
-                        (datetime.now() - datetime.strptime(p["date"], "%Y-%m-%d")).days
-                    )
+                    # CHẶN TUỔI CÂY ÂM
+                    age = max(0, (datetime.now() - datetime.strptime(p['date'], "%Y-%m-%d")).days)
 
-                    st.write(f"Tuổi cây: **{age} ngày**")
-                    st.caption(f"Ngày trồng: {p['date']}")
+                    st.write(f"Tuổi cây: {age} ngày")
+
 
                 with col_ai:
 
-                    k_key = next(
-                        (k for k in CROP_KNOWLEDGE if k in p["name"]),
-                        "Chung"
-                    )
+                    st.markdown("#### 🌿 Phác đồ chăm sóc Thuận tự nhiên")
 
-                    stages = CROP_KNOWLEDGE[k_key]
+                    # FALLBACK PHÁC ĐỒ CHUNG
+                    k_key = next((k for k in CROP_KNOWLEDGE.keys() if k in p['name']), "Chung")
 
-                    curr = next(
-                        (s for s in stages if s["days"][0] <= age <= s["days"][1]),
-                        stages[-1]
-                    )
+                    if k_key:
 
-                    st.info(f"Giai đoạn: {curr['stage']}")
+                        stages = CROP_KNOWLEDGE[k_key]
 
-                    tab1, tab2 = st.tabs(["Hữu cơ", "Dự phòng"])
+                        curr = next(
+                            (s for s in stages if s['days'][0] <= age <= s['days'][1]),
+                            stages[-1]
+                        )
 
-                    with tab1:
-                        st.write(curr["organic"])
+                        st.info(f"📍 Giai đoạn: {curr['stage']}")
 
-                    with tab2:
-                        st.write(curr["chemical"])
+                        tab_org, tab_chem = st.tabs(
+                            ["🍃 Phương án Hữu cơ", "🧪 Phương án Dự phòng"]
+                        )
+
+                        with tab_org:
+
+                            st.success(curr["organic"])
+
+                            st.caption(
+                                f"Vật tư gợi ý: {FARM_RESOURCES['Dinh dưỡng']['Hữu cơ (Ưu tiên)']}"
+                            )
+
+                        with tab_chem:
+
+                            st.warning(curr["backup"])
+
+                        st.caption(f"📌 {curr['note']}")
+
+                        warning = ai_crop_warning(curr["stage"], weather)
+
+                        if warning:
+                            st.error(f"🤖 AI Cảnh báo: {warning}")
+
+                    else:
+
+                        st.info("Đang cập nhật phác đồ chăm sóc...")
+
 
                     if weather:
 
+                        st.markdown("#### 🌦 Điều chỉnh theo thời tiết")
+
+                        if weather["temp"] > 32:
+
+                            st.warning("Trời nóng: tăng lượng nước tưới")
+
                         if weather["hum"] > 85:
-                            st.warning("Độ ẩm cao → nguy cơ nấm bệnh")
 
-                        if weather["temp"] > 34:
-                            st.warning("Nhiệt độ cao → cây dễ sốc nhiệt")
+                            st.error(
+                                f"Độ ẩm cao → nguy cơ nấm. Gợi ý: {FARM_RESOURCES['Trị bệnh']['Sinh học (Ưu tiên)']}"
+                            )
 
-                        if weather["rain"] > 5:
-                            st.warning("Mưa nhiều → nguy cơ thối rễ")
+                        if weather["rain"] > 0:
+
+                            st.info("Sau mưa: rải vôi quanh gốc")
+
 
                 with col_action:
 
-                    with st.popover("📝 Chỉnh sửa"):
+                    if st.button("Xóa", key=f"del_{p['id']}"):
 
-                        new_name = st.text_input(
-                            "Tên mới",
-                            value=p["name"],
-                            key=f"name_{p['id']}"
-                        )
-
-                        new_date = st.date_input(
-                            "Ngày trồng mới",
-                            value=datetime.strptime(p["date"], "%Y-%m-%d"),
-                            key=f"date_{p['id']}"
-                        )
-
-                        if st.button("Cập nhật", key=f"update_{p['id']}"):
-
-                            p["name"] = new_name
-                            p["date"] = new_date.strftime("%Y-%m-%d")
-
-                            save_data(data)
-
-                            st.success("Đã cập nhật thông tin")
-                            st.rerun()
-
-                    if st.button("🗑️ Xóa cây", key=f"del_{p['id']}"):
                         data = delete_plant(data, p["id"])
                         st.rerun()
 
-                with st.expander("📖 Nhật ký chăm sóc"):
+    else:
 
-                    c_type, c_content, c_btn = st.columns([1, 2, 1])
-
-                    with c_type:
-                        action = st.selectbox(
-                            "Loại",
-                            ["Bón phân", "Phun thuốc"],
-                            key=f"log_type_{p['id']}"
-                        )
-
-                    with c_content:
-                        note = st.text_input(
-                            "Nội dung",
-                            key=f"log_note_{p['id']}"
-                        )
-
-                    with c_btn:
-                        st.write("")
-                        if st.button("Ghi sổ", key=f"btn_log_{p['id']}"):
-
-                            if note:
-                                data = add_log(data, p["id"], action, note)
-                                st.success("Đã lưu nhật ký")
-                                st.rerun()
-
-                    st.divider()
-
-                    logs = p.get("logs", [])
-
-                    if logs:
-
-                        for l in logs[:5]:
-
-                            color = "blue" if l["type"] == "Bón phân" else "orange"
-
-                            st.markdown(
-                                f"**{l['date']}** | :{color}[{l['type']}] | {l['content']}"
-                            )
-
-                    else:
-                        st.caption("Chưa có nhật ký chăm sóc")
+        st.info("Chưa có cây trồng")
 
 
-# ================= AI ASSISTANT =================
+# =========================
+# AI ASSISTANT
+# =========================
 
-elif menu == "💬 Trợ lý AI Assistant":
+elif menu == "💬 AI Assistant":
 
-    st.title("💬 Trợ lý AI Nông nghiệp")
+    st.title("💬 Trợ lý Nông nghiệp")
 
-    st.info(
-        f"Hệ thống đang theo dõi {len(data.get('plants', []))} cây trồng."
-    )
+    plant_count = len(data.get("plants", []))
 
-    history = data.get("chat", [])
+    st.info(f"🌱 Hệ thống đang theo dõi {plant_count} cây trồng.")
 
-    for h in history:
+    for chat in data.get("chat_history", []):
 
         with st.chat_message("user"):
-            st.write(h["q"])
+            st.write(chat["user"])
 
         with st.chat_message("assistant"):
-            st.write(h["a"])
+            st.write(chat["ai"])
 
-    if prompt := st.chat_input("Hỏi về tình trạng cây trồng..."):
 
-        weather = get_real_weather()
-
-        if weather:
-
-            vpd = calc_vpd(weather["temp"], weather["hum"])
-
-            ai_res = (
-                f"Hiện tại ở {CITY}: "
-                f"{weather['temp']}°C, "
-                f"độ ẩm {weather['hum']}%, "
-                f"mưa {weather['rain']} mm."
-            )
-
-            if vpd < 0.5:
-                ai_res += f" ⚠️ VPD thấp ({vpd}) → nguy cơ nấm bệnh."
-
-            elif vpd > 2:
-                ai_res += f" ⚠️ VPD cao ({vpd}) → cây dễ mất nước."
-
-            else:
-                ai_res += f" VPD {vpd} → điều kiện môi trường ổn định."
-
-        else:
-            ai_res = "Không lấy được dữ liệu thời tiết."
+    if prompt := st.chat_input("Hỏi về cây trồng..."):
 
         with st.chat_message("user"):
             st.write(prompt)
 
-        with st.chat_message("assistant"):
-            st.write(ai_res)
+        if weather:
+
+            ai_res = f"Nhiệt độ hiện tại {weather['temp']}°C. "
+
+            if weather["temp"] > 30:
+                ai_res += "Trời khá nóng, nên chú ý tưới nước."
+
+            elif weather["hum"] > 85:
+                ai_res += "Độ ẩm cao, nên phòng nấm bệnh."
+
+            else:
+                ai_res += "Thời tiết thuận lợi cho cây."
+
+        else:
+
+            ai_res = "Chưa lấy được dữ liệu thời tiết."
 
         data = add_chat(data, prompt, ai_res)
-        st.rerun()
+
+        with st.chat_message("assistant"):
+            st.write(ai_res)
