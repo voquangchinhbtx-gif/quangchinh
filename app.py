@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 import requests
 import math
@@ -457,4 +456,4 @@ elif menu == "💬 AI Assistant":
             st.write(ai_res)
 
         data = add_chat(data,prompt,ai_res)
-```
+
