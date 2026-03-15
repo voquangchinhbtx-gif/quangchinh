@@ -147,6 +147,7 @@ elif menu == " 🌱  Quản lý Cây trồng":
                     )
                     st.write(f"Tuổi cây: **{age} ngày**")
                     st.caption(f"Ngày trồng: {p['date']}")
+
                 with col_ai:
                     k_key = next(
                         (
@@ -157,6 +158,7 @@ elif menu == " 🌱  Quản lý Cây trồng":
                         "Chung"
                     )
                     stages = CROP_KNOWLEDGE[k_key]
+
                     curr = next(
                         (
                             s
@@ -165,26 +167,36 @@ elif menu == " 🌱  Quản lý Cây trồng":
                         ),
                         stages[-1]
                     )
+
                     st.info(f"Giai đoạn: {curr['stage']}")
+
                     tab1, tab2 = st.tabs(["Hữu cơ", "Dự phòng"])
+
                     with tab1:
                         st.write(curr["organic"])
+
                     with tab2:
                         st.write(curr["chemical"])
+
                     if weather:
                         if weather["hum"] > 85:
                             st.warning("Độ ẩm cao → nguy cơ nấm bệnh")
+
                         if weather["temp"] > 34:
                             st.warning("Nhiệt độ cao → cây dễ sốc nhiệt")
+
                         if weather["rain"] > 5:
                             st.warning("Mưa nhiều → nguy cơ thối rễ")
+
                 with col_action:
+
                     with st.popover(" 📝  Chỉnh sửa"):
                         new_name = st.text_input(
                             "Tên mới",
                             value=p["name"],
                             key=f"name_{p['id']}"
                         )
+
                         new_date = st.date_input(
                             "Ngày trồng mới",
                             value=datetime.strptime(
@@ -193,6 +205,7 @@ elif menu == " 🌱  Quản lý Cây trồng":
                             ),
                             key=f"date_{p['id']}"
                         )
+
                         if st.button(
                             "Cập nhật",
                             key=f"update_{p['id']}"
@@ -210,12 +223,16 @@ elif menu == " 🌱  Quản lý Cây trồng":
                         st.session_state[
                             f"confirm_delete_{p['id']}"
                         ] = True
+
                     if st.session_state.get(
                         f"confirm_delete_{p['id']}",
                         False
                     ):
+
                         st.error("Bạn chắc chắn muốn xóa cây này?")
+
                         c1, c2 = st.columns(2)
+
                         with c1:
                             if st.button(
                                 "Xác nhận xóa",
@@ -229,6 +246,7 @@ elif menu == " 🌱  Quản lý Cây trồng":
                                     f"confirm_delete_{p['id']}"
                                 ]
                                 st.rerun()
+
                         with c2:
                             if st.button(
                                 "Hủy",
@@ -240,20 +258,24 @@ elif menu == " 🌱  Quản lý Cây trồng":
                                 st.rerun()
 
                 with st.expander(" 📖  Nhật ký chăm sóc"):
+
                     c_type, c_content, c_btn = st.columns(
                         [1, 2, 1]
                     )
+
                     with c_type:
                         action = st.selectbox(
                             "Loại",
                             ["Bón phân", "Phun thuốc"],
                             key=f"log_type_{p['id']}"
                         )
+
                     with c_content:
                         note = st.text_input(
                             "Nội dung",
                             key=f"log_note_{p['id']}"
                         )
+
                     with c_btn:
                         st.write("")
                         if st.button(
@@ -271,69 +293,95 @@ elif menu == " 🌱  Quản lý Cây trồng":
                                     "Đã lưu nhật ký"
                                 )
                                 st.rerun()
+
                     st.divider()
+
                     logs = p.get("logs", [])
+
                     if logs:
                         for l in logs[:5]:
+
                             color = (
                                 "blue"
                                 if l["type"] == "Bón phân"
                                 else "orange"
                             )
+
                             st.markdown(
                                 f"**{l['date']}** | :{color}[{l['type']}] | {l['content']}"
                             )
+
                     else:
                         st.caption(
                             "Chưa có nhật ký chăm sóc"
                         )
 
 elif menu == " 💬  Trợ lý AI Assistant":
+
     st.title(" 💬  Trợ lý AI Nông nghiệp")
+
     st.info(
         f"Hệ thống đang theo dõi {len(data.get('plants', []))} cây trồng."
     )
+
     history = data.get("chat", [])
+
     for h in history:
+
         with st.chat_message("user"):
             st.write(h["q"])
+
         with st.chat_message("assistant"):
             st.write(h["a"])
+
     if prompt := st.chat_input(
         "Hỏi về tình trạng cây trồng..."
     ):
+
         weather = get_real_weather()
+
         if weather:
+
             vpd = calc_vpd(
                 weather["temp"],
                 weather["hum"]
             )
+
             ai_res = (
                 f"Hiện tại ở {CITY}: "
                 f"nhiệt độ {weather['temp']}°C, "
                 f"độ ẩm {weather['hum']}%, "
                 f"mưa {weather['rain']} mm."
             )
+
             if vpd < 0.5:
                 ai_res += (
                     f"  ⚠️  Chỉ số VPD thấp ({vpd}). "
                     "Không khí rất ẩm, nguy cơ nấm bệnh cao."
                 )
+
             elif vpd > 2:
                 ai_res += (
                     f"  ⚠️  VPD cao ({vpd}). "
                     "Cây đang thoát hơi nước mạnh, "
                     "nên kiểm tra độ ẩm đất."
                 )
+
             else:
                 ai_res += (
                     f" VPD hiện tại là {vpd}, "
                     "điều kiện môi trường khá cân bằng."
                 )
+
         else:
             ai_res = "Không lấy được dữ liệu thời tiết."
+
         with st.chat_message("user"):
             st.write(prompt)
+
         with st.chat_message("assistant"):
             st.write(ai_res)
+
         data = add_chat(data, prompt, ai_res)
+
+        st.rerun()
