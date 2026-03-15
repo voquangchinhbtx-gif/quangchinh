@@ -245,7 +245,7 @@ elif menu == "📸 Camera AI":
     img_file = None
 if src_option == "Máy ảnh":
         img_file = st.camera_input("Chụp ảnh vết bệnh")
-    else:
+else:
         img_file = st.file_uploader("Chọn tệp ảnh...", type=["jpg", "png", "jpeg"])
 
 if img_file:
