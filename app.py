@@ -245,16 +245,16 @@ elif menu == "📸 Camera AI":
     src_option = st.radio("Chọn nguồn hình ảnh:", ["Máy ảnh (Chụp trực tiếp)", "Tải ảnh từ thư viện"])
     
     img_file = None 
-    if src_option == "Máy ảnh (Chụp trực tiếp)":
+if src_option == "Máy ảnh (Chụp trực tiếp)":
         img_file = st.camera_input("Chụp lá cây hoặc vết bệnh")
     else:
         img_file = st.file_uploader("Tải ảnh lên...", type=["jpg", "png", "jpeg"])
 
-    if img_file:
+if img_file:
         image = Image.open(img_file)
         st.image(image, caption="Ảnh đang chờ xử lý", use_container_width=True)
 
-        if st.button("🚀 Phân tích & Cảnh báo Chuyên sâu"):
+    if st.button("🚀 Phân tích & Cảnh báo Chuyên sâu"):
             with st.spinner("AI đang soi bệnh và kiểm tra thời tiết..."):
                 try:
                     model = genai.GenerativeModel('gemini-1.5-flash')
