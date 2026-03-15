@@ -199,7 +199,7 @@ st.set_page_config(
 
 data = load_data()
 
-weather = get_real_weather()
+weather = get_weather()
 
 
 # =========================
