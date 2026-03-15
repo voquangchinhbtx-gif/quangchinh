@@ -1,38 +1,15 @@
 import json
 import os
-from config import DATA_FILE
-
 
 def load_data():
-
-    if not os.path.exists(DATA_FILE):
-
-        data = {"plants": []}
-
-        with open(DATA_FILE, "w") as f:
-            json.dump(data, f)
-
-    with open(DATA_FILE) as f:
-        return json.load(f)
-
-
-def save_data(data):
-
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-
-def add_plant(data, plant):
-
-    data["plants"].append(plant)
-
-
-def delete_plant(data, index):
-
-    data["plants"].pop(index)
-
-
-def get_plants(data):
-
-    return data["plants"]
+    file_path = 'farm_data.json'
+    # Kiểm tra nếu file không tồn tại hoặc bị trống
+    if not os.path.exists(file_path) or os.stat(file_path).st_size == 0:
+        return {"crops": [], "settings": {}} # Trả về dữ liệu mặc định
+    
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        return {"crops": [], "settings": {}} # Nếu lỗi định dạng thì trả về mặc định
 
