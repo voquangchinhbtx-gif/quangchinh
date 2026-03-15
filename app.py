@@ -19,7 +19,7 @@ except:
 try:
     GENAI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    GENAI_KEY = "DÁN_API_KEY_CỦA_BẠN_VÀO_ĐÂY" # Lấy tại https://aistudio.google.com/
+    GENAI_KEY = "66ad043d6024749fa4bf92f0a6782397" # Lấy tại https://aistudio.google.com/
 
 genai.configure(api_key=GENAI_KEY)
 # =========================
