@@ -284,8 +284,7 @@ elif menu == "📸 Camera AI":
                     st.error(f"Lỗi: {e}. Hãy đảm bảo bạn đã cấu hình GEMINI_API_KEY trong Secrets.")
 
 # elif menu == "💬 AI Assistant":
-        ]
-    )
+        
 
 
 # =========================
