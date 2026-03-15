@@ -5,6 +5,7 @@ import google.generativeai as genai
 from PIL import Image
 from datetime import datetime
 from database import load_data, add_plant, delete_plant, add_chat
+from weather import get_weather
 
 # =========================
 # CẤU HÌNH
@@ -179,29 +180,11 @@ def calculate_vpd(temp, humidity):
 # =========================
 
 @st.cache_data(ttl=600)
-def get_real_weather():
+def fetch_weather_data():
+    return get_weather() # Gọi hàm tự định vị từ weather.py
 
-    url = f"http://api.openweathermap.org/data/2.5/weather?lat={LAT}&lon={LON}&appid={API_KEY}&units=metric&lang=vi"
-
-    try:
-
-        res = requests.get(url, timeout=10)
-
-        if res.status_code == 200:
-
-            d = res.json()
-
-            return {
-                "temp": d["main"]["temp"],
-                "hum": d["main"]["humidity"],
-                "rain": d.get("rain", {}).get("1h", 0),
-                "desc": d["weather"][0]["description"]
-            }
-
-    except:
-        pass
-
-    return None
+data = load_data()
+weather = fetch_weather_data() # Biến 'weather' bây giờ sẽ chứa đầy đủ cảnh báo nấm bệnh
 
 
 # =========================
