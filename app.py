@@ -232,6 +232,7 @@ with st.sidebar:
         [
             "📊 Dashboard Chuyên sâu",
             "🌱 Quản lý Cây trồng",
+            "📸 Camera AI",
             "💬 AI Assistant"
         ]
     )
