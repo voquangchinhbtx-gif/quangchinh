@@ -405,7 +405,7 @@ elif menu == "🌱 Quản lý Cây trồng":
 
 
 # =========================
-# AI ASSISTANT
+# AI CAMERA VÀ AI ASSISTANT
 # =========================
 elif menu == "📸 Camera Chẩn đoán":
     st.title("📸 Camera Chẩn đoán & Cảnh báo Chuyên sâu")
