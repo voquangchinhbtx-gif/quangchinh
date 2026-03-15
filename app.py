@@ -242,10 +242,9 @@ with st.sidebar:
 elif menu == "📸 Camera AI":
     st.title("📸 Camera Chẩn đoán & Cảnh báo Chuyên sâu")
     
-    # Giao diện chọn nguồn ảnh
     src_option = st.radio("Chọn nguồn hình ảnh:", ["Máy ảnh (Chụp trực tiếp)", "Tải ảnh từ thư viện"])
     
-    img_file = None # Khởi tạo biến
+    img_file = None 
     if src_option == "Máy ảnh (Chụp trực tiếp)":
         img_file = st.camera_input("Chụp lá cây hoặc vết bệnh")
     else:
@@ -258,11 +257,9 @@ elif menu == "📸 Camera AI":
         if st.button("🚀 Phân tích & Cảnh báo Chuyên sâu"):
             with st.spinner("AI đang soi bệnh và kiểm tra thời tiết..."):
                 try:
-                    # Gọi mô hình Gemini
                     model = genai.GenerativeModel('gemini-1.5-flash')
                     
-                    # Lấy thông tin thời tiết để AI làm căn cứ cảnh báo
-                    w_info = f"Nhiệt độ: {weather['temp']}°C, Độ ẩm: {weather['hum']}%, Mô tả: {weather['desc']}" if weather else "Không có dữ liệu thời tiết"
+                    w_info = f"{weather['temp']}°C, ẩm {weather['hum']}%, {weather['desc']}" if weather else "Không rõ"
                     
                     prompt = f"""
                     Bạn là Chuyên gia Bảo vệ Thực vật chuyên về cây ớt và cây trồng cạn. 
@@ -272,10 +269,10 @@ elif menu == "📸 Camera AI":
                     2. CẢNH BÁO: Với thời tiết {w_info}, bệnh này có dễ lây lan thành dịch không? Tại sao?
                     3. PHÁC ĐỒ ĐIỀU TRỊ: 
                        - Bước 1 (Vật lý): Cách ly, cắt tỉa.
-                       - Bước 2 (Hữu cơ): Hoạt chất sinh học khuyến nghị.
-                       - Bước 3 (Hóa học): Thuốc đặc trị nếu tình trạng trở nặng.
-                    4. LỜI KHUYÊN PHÒNG BỆNH: Chỉnh sửa chế độ tưới tiêu/phân bón.
-                    Trả lời bằng tiếng Việt, định dạng Markdown rõ ràng.
+                       - Bước 2 (Hữu cơ): Hoạt chất sinh học (Trichoderma, Nano bạc...).
+                       - Bước 3 (Hóa học): Thuốc đặc trị khi bệnh nặng.
+                    4. LỜI KHUYÊN PHÒNG BỆNH: Chỉnh sửa chế độ tưới/phân.
+                    Trả lời tiếng Việt, Markdown rõ ràng.
                     """
                     
                     response = model.generate_content([prompt, image])
@@ -283,8 +280,7 @@ elif menu == "📸 Camera AI":
                     st.markdown(response.text)
                     
                 except Exception as e:
-                    st.error(f"Lỗi: {e}. Hãy đảm bảo bạn đã cấu hình GEMINI_API_KEY trong Secrets.")
-
+                    st.error(f"Lỗi: {e}. Kiểm tra GEMINI_API_KEY trong Secrets.")
 # elif menu == "💬 AI Assistant":
         
 
