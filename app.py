@@ -254,7 +254,7 @@ if img_file:
         image = Image.open(img_file)
         st.image(image, caption="Ảnh đang chờ xử lý", use_container_width=True)
 
-    if st.button("🚀 Phân tích & Cảnh báo Chuyên sâu"):
+if st.button("🚀 Phân tích & Cảnh báo Chuyên sâu"):
             with st.spinner("AI đang soi bệnh và kiểm tra thời tiết..."):
                 try:
                     model = genai.GenerativeModel('gemini-1.5-flash')
