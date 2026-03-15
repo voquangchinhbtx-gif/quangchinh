@@ -8,8 +8,12 @@ from database import load_data, add_plant, delete_plant, add_chat
 # CẤU HÌNH
 # =========================
 
-API_KEY = "66ad043d6024749fa4bf92f0a6782397"
-LAT, LON = 16.4637, 107.5909
+# Sử dụng st.secrets để bảo mật API Key khi triển khai
+try:
+    API_KEY = st.secrets["OPENWEATHER_API_KEY"]
+except:
+    # Key dự phòng nếu không tìm thấy trong secrets
+    API_KEY = "66ad043d6024749fa4bf92f0a6782397"
 
 
 # =========================
