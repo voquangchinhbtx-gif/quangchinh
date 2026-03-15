@@ -475,3 +475,73 @@ elif menu == "📸 Camera Chẩn đoán":
                 except Exception as e:
                     st.error(f"⚠️ Hệ thống AI gặp sự cố: {str(e)}")
                     st.info("Kiểm tra lại kết nối mạng hoặc API Key Gemini.")
+elif menu == "💬 AI Assistant":
+    st.title("💬 Trợ lý Kỹ thuật")
+
+    # Hiển thị bối cảnh thời tiết hiện tại để người dùng biết AI đang dựa trên dữ liệu nào
+    if weather and isinstance(weather, dict):
+        st.caption(f"📍 Bối cảnh thực địa: {weather.get('temp','?')}°C - {weather.get('hum','?')}% ẩm")
+    else:
+        st.caption("⚠️ Chế độ ngoại tuyến: AI không có dữ liệu thời tiết.")
+
+    # 1. TẠO KHUNG CUỘN CHO LỊCH SỬ CHAT
+    chat_container = st.container()
+    
+    with chat_container:
+        for chat in data.get("chat_history", []):
+            with st.chat_message("user"):
+                st.write(chat["user"])
+            with st.chat_message("assistant"):
+                st.markdown(chat["ai"])
+
+    # 2. XỬ LÝ NHẬP LIỆU
+    if prompt := st.chat_input("Hỏi AI về kỹ thuật vườn, phân bón, sâu bệnh..."):
+        # Hiển thị câu hỏi mới ngay lập tức
+        with st.chat_message("user"):
+            st.write(prompt)
+
+        with st.spinner("🤖 AI đang phân tích dữ liệu..."):
+            try:
+                # Cấu hình mô hình
+                model = genai.GenerativeModel("gemini-1.5-flash")
+
+                # Chuẩn bị ngữ cảnh thời tiết an toàn
+                w_ctx = (
+                    f"Nhiệt độ {weather.get('temp','?')}°C, Độ ẩm {weather.get('hum','?')}%"
+                    if isinstance(weather, dict)
+                    else "Không có dữ liệu thời tiết thực địa"
+                )
+
+                # Prompt kỹ thuật chuyên sâu
+                full_prompt = f"""
+                Bạn là Chuyên gia Nông nghiệp Công nghệ cao.
+                Dữ liệu thời tiết hiện tại: {w_ctx}
+                Câu hỏi của nông dân: {prompt}
+
+                Yêu cầu:
+                - Trả lời bằng tiếng Việt.
+                - Tập trung giải pháp kỹ thuật, ưu tiên hữu cơ/sinh học.
+                - Sử dụng Markdown (###, **, -) để trình bày đẹp mắt.
+                - Tuyệt đối không nhắc đến việc soạn giáo án hay giảng dạy.
+                """
+
+                # Gọi AI
+                response = model.generate_content(full_prompt)
+                
+                # Bảo vệ response (Phòng trường hợp AI chặn nội dung nhạy cảm)
+                ai_res = response.text if hasattr(response, "text") else "⚠️ AI không thể trả lời câu hỏi này. Vui lòng hỏi về kỹ thuật nông nghiệp."
+
+                # Hiển thị câu trả lời mới
+                with st.chat_message("assistant"):
+                    st.markdown(ai_res)
+
+                # 3. LƯU VÀO DATABASE VÀ CẬP NHẬT GIAO DIỆN
+                add_chat(data, prompt, ai_res)
+                
+                # Buộc Streamlit cập nhật lại để hiển thị lịch sử mới nhất
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"⚠️ Lỗi kết nối AI: {e}")
+                st.info("Kiểm tra lại GEMINI_API_KEY trong file secrets của bạn.")                    
+                    
