@@ -9,7 +9,7 @@ from database import load_data, add_plant, delete_plant, add_chat
 # =========================
 
 API_KEY = "66ad043d6024749fa4bf92f0a6782397"
-LAT, LON = 16.4637, 107.5909  # Huế
+LAT, LON = 16.4637, 107.5909
 
 
 # =========================
@@ -77,9 +77,75 @@ CROP_KNOWLEDGE = {
             "note": "Không tưới đẫm buổi tối."
         }
 
+    ],
+
+    # BỔ SUNG PHÁC ĐỒ CHUNG
+    "Chung": [
+
+        {
+            "stage": "Cây non",
+            "days": (0,30),
+
+            "organic": "Tưới Humic + Trichoderma kích rễ.",
+
+            "backup": "Nếu héo rũ dùng Metalaxyl nhẹ.",
+
+            "note": "Giữ ẩm đất, tránh nắng gắt."
+        },
+
+        {
+            "stage": "Sinh trưởng",
+            "days": (31,90),
+
+            "organic": "Bón phân hữu cơ hoai + đạm cá.",
+
+            "backup": "Nếu sâu ăn lá dùng BT.",
+
+            "note": "Theo dõi côn trùng định kỳ."
+        },
+
+        {
+            "stage": "Ra hoa / kết trái",
+            "days": (91,200),
+
+            "organic": "Bổ sung Kali + dịch chuối.",
+
+            "backup": "Nếu rụng hoa bổ sung Canxi-Bo.",
+
+            "note": "Không tưới quá nhiều nước."
+        }
+
     ]
 
 }
+
+
+# =========================
+# AI CẢNH BÁO
+# =========================
+
+def ai_crop_warning(stage, weather):
+
+    if not weather:
+        return None
+
+    temp = weather["temp"]
+    hum = weather["hum"]
+    rain = weather["rain"]
+
+    if hum > 85:
+        return "🦠 Độ ẩm cao → nguy cơ nấm bệnh. Khuyến nghị: Trichoderma hoặc Nano Bạc."
+
+    if temp > 34:
+        return "🔥 Nhiệt độ cao → cây dễ sốc nhiệt. Nên tăng tưới và che nắng."
+
+    if rain > 5:
+        return "🌧 Mưa nhiều → nguy cơ thối rễ. Nên rải vôi và kiểm tra thoát nước."
+
+    if stage == "Ra hoa / Trái" and hum > 80:
+        return "⚠ Giai đoạn ra hoa gặp ẩm cao → dễ rụng hoa."
+
+    return None
 
 
 # =========================
@@ -95,7 +161,7 @@ def calculate_vpd(temp, humidity):
 
 
 # =========================
-# LẤY THỜI TIẾT (CACHE 10 PHÚT)
+# LẤY THỜI TIẾT (CACHE)
 # =========================
 
 @st.cache_data(ttl=600)
@@ -242,7 +308,8 @@ elif menu == "🌱 Quản lý Cây trồng":
 
                     st.subheader(f"🌿 {p['name']}")
 
-                    age = (datetime.now() - datetime.strptime(p['date'], "%Y-%m-%d")).days
+                    # CHẶN TUỔI CÂY ÂM
+                    age = max(0, (datetime.now() - datetime.strptime(p['date'], "%Y-%m-%d")).days)
 
                     st.write(f"Tuổi cây: {age} ngày")
 
@@ -251,7 +318,8 @@ elif menu == "🌱 Quản lý Cây trồng":
 
                     st.markdown("#### 🌿 Phác đồ chăm sóc Thuận tự nhiên")
 
-                    k_key = next((k for k in CROP_KNOWLEDGE.keys() if k in p['name']), None)
+                    # FALLBACK PHÁC ĐỒ CHUNG
+                    k_key = next((k for k in CROP_KNOWLEDGE.keys() if k in p['name']), "Chung")
 
                     if k_key:
 
@@ -282,12 +350,15 @@ elif menu == "🌱 Quản lý Cây trồng":
 
                         st.caption(f"📌 {curr['note']}")
 
+                        warning = ai_crop_warning(curr["stage"], weather)
+
+                        if warning:
+                            st.error(f"🤖 AI Cảnh báo: {warning}")
+
                     else:
 
                         st.info("Đang cập nhật phác đồ chăm sóc...")
 
-
-                    # Điều chỉnh theo thời tiết
 
                     if weather:
 
