@@ -3,13 +3,19 @@ import os
 
 def load_data():
     file_path = 'farm_data.json'
-    # Kiểm tra nếu file không tồn tại hoặc bị trống
     if not os.path.exists(file_path) or os.stat(file_path).st_size == 0:
-        return {"crops": [], "settings": {}} # Trả về dữ liệu mặc định
-    
+        return {"crops": []} 
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except json.JSONDecodeError:
-        return {"crops": [], "settings": {}} # Nếu lỗi định dạng thì trả về mặc định
+    except:
+        return {"crops": []}
 
+def get_plants():
+    """Hàm này là cái mà file dashboard.py đang tìm!"""
+    data = load_data()
+    # Trả về danh sách cây trồng, nếu không có thì trả về danh sách rỗng
+    return data.get("crops", [])
+
+# Nếu các file khác có đòi hỏi thêm hàm get_crop_info hay get_crop_name, 
+# bạn cũng nên khai báo sẵn ở đây để tránh lỗi tiếp theo.
