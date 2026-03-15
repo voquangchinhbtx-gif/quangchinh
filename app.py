@@ -133,7 +133,7 @@ CROP_KNOWLEDGE = {
 
 
 # =========================
-# AI CẢNH BÁO
+# AI CẢNH BÁO và CHẨN ĐOÁN
 # =========================
 
 def ai_crop_warning(stage, weather):
