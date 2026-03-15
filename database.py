@@ -1,155 +1,180 @@
 import json
 import os
+import copy
+from datetime import datetime
 
-FILE_PATH = "farm_data.json"
+DATA_FILE = "aji_farm_db.json"
 
+INIT_DATA = {
+    "plants": [],
+    "disease_logs": [],
+    "irrigation_logs": [],
+    "fertilizer_logs": [],
+    "inventory": {
+        "fertilizer": 100,
+        "pesticide": 100
+    },
+    "chat_history": []
+}
 
-# ==============================
+# =========================
 # LOAD DATA
-# ==============================
+# =========================
 def load_data():
-    """Đọc dữ liệu từ JSON. Nếu file lỗi hoặc trống, tạo cấu trúc chuẩn."""
-    if not os.path.exists(FILE_PATH) or os.stat(FILE_PATH).st_size == 0:
-        return {"crops": []}
+    if os.path.exists(DATA_FILE) and os.stat(DATA_FILE).st_size > 0:
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return copy.deepcopy(INIT_DATA)
 
-    try:
-        with open(FILE_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, Exception):
-        return {"crops": []}
+    return copy.deepcopy(INIT_DATA)
 
 
-# ==============================
+# =========================
 # SAVE DATA
-# ==============================
+# =========================
 def save_data(data):
-    """Lưu dữ liệu an toàn vào file JSON."""
-    try:
-        with open(FILE_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        print(f"Lỗi khi lưu dữ liệu: {e}")
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-# ==============================
-# GET PLANTS
-# ==============================
-def get_plants(data=None):
-    """Lấy danh sách cây trồng."""
-    if isinstance(data, dict):
-        return data.get("crops", [])
+# =========================
+# PLANT MANAGEMENT
+# =========================
+def add_plant(data, crop_name, plant_date):
+    """Thêm cây mới"""
 
-    current_data = load_data()
-    return current_data.get("crops", [])
+    current_ids = [int(p.get("id", 0)) for p in data["plants"]]
+    new_id = max(current_ids, default=0) + 1
 
-
-# ==============================
-# ADD PLANT
-# ==============================
-def add_plant(plant_name, planting_date):
-    """Thêm cây trồng mới."""
-    data = load_data()
-
-    if "crops" not in data:
-        data["crops"] = []
-
-    # Tạo ID không trùng
-    new_id = max([p.get("id", 0) for p in data["crops"]], default=0) + 1
-
-    new_plant = {
+    plant = {
         "id": new_id,
-        "name": str(plant_name).strip(),
-        "date": str(planting_date)
+        "name": str(crop_name).strip(),
+        "date": str(plant_date),
+        "created_at": datetime.now().isoformat()
     }
 
-    data["crops"].append(new_plant)
+    data["plants"].append(plant)
     save_data(data)
 
-    return new_plant
+    return data
 
 
-# ==============================
-# DELETE PLANT
-# ==============================
-def delete_plant(plant_id):
-    """Xóa cây dựa trên ID."""
-    data = load_data()
-
-    if "crops" not in data:
-        return False
+def delete_plant(data, plant_id):
+    """Xóa cây"""
 
     plant_id = int(plant_id)
 
-    original_count = len(data["crops"])
-
-    data["crops"] = [
-        p for p in data["crops"]
+    data["plants"] = [
+        p for p in data["plants"]
         if int(p.get("id", 0)) != plant_id
     ]
 
-    if len(data["crops"]) < original_count:
-        save_data(data)
-        return True
-
-    return False
+    save_data(data)
+    return data
 
 
-# ==============================
-# UPDATE PLANT
-# ==============================
-def update_plant(plant_id, new_name=None, new_date=None):
-    """Cập nhật thông tin cây."""
-    data = load_data()
-
-    if "crops" not in data:
-        return False
+def update_plant(data, plant_id, new_name=None, new_date=None):
+    """Cập nhật cây"""
 
     plant_id = int(plant_id)
 
-    for plant in data["crops"]:
+    for plant in data["plants"]:
 
         if int(plant.get("id", 0)) == plant_id:
 
-            if new_name is not None and str(new_name).strip():
+            if new_name:
                 plant["name"] = str(new_name).strip()
 
-            if new_date is not None:
+            if new_date:
                 plant["date"] = str(new_date)
 
-            save_data(data)
-            return True
+            plant["updated_at"] = datetime.now().isoformat()
 
-    return False
+            break
 
-
-# ==============================
-# GET CROP NAME
-# ==============================
-def get_crop_name(crop_id):
-    """Tìm tên cây dựa trên ID."""
-    plants = get_plants()
-
-    for p in plants:
-        if str(p.get("id")) == str(crop_id):
-            return p.get("name")
-
-    return "Không xác định"
+    save_data(data)
+    return data
 
 
-# ==============================
-# GET CROP INFO (CHO AI)
-# ==============================
-def get_crop_info(crop_name):
-    """Trả thông tin cây trồng cơ bản cho AI."""
-    crops_info = {
-        "Lúa": "Cây lương thực chính, cần nhiều nước và đất ngập.",
-        "Ngô": "Cây lương thực chịu hạn tốt hơn lúa.",
-        "Cà phê": "Cây công nghiệp lâu năm, cần khí hậu mát.",
-        "Ớt": "Cây rau màu phổ biến, cần nhiều ánh sáng và thoát nước tốt.",
-        "Cà chua": "Cây rau ăn quả, dễ mắc bệnh nấm và sâu."
+def get_plants(data):
+    return data.get("plants", [])
+
+
+# =========================
+# DISEASE LOG
+# =========================
+def add_disease_log(data, plant_id, disease_name, note=""):
+    log = {
+        "plant_id": int(plant_id),
+        "disease": disease_name,
+        "note": note,
+        "date": datetime.now().isoformat()
     }
 
-    return crops_info.get(
-        crop_name,
-        f"Thông tin cơ bản về cây {crop_name}"
-    )
+    data["disease_logs"].append(log)
+    save_data(data)
+
+    return data
+
+
+# =========================
+# IRRIGATION LOG
+# =========================
+def add_irrigation_log(data, plant_id, amount):
+    log = {
+        "plant_id": int(plant_id),
+        "water_amount": amount,
+        "date": datetime.now().isoformat()
+    }
+
+    data["irrigation_logs"].append(log)
+    save_data(data)
+
+    return data
+
+
+# =========================
+# FERTILIZER LOG
+# =========================
+def add_fertilizer_log(data, plant_id, fertilizer_name, amount):
+
+    log = {
+        "plant_id": int(plant_id),
+        "fertilizer": fertilizer_name,
+        "amount": amount,
+        "date": datetime.now().isoformat()
+    }
+
+    data["fertilizer_logs"].append(log)
+
+    # trừ kho
+    if "fertilizer" in data["inventory"]:
+        data["inventory"]["fertilizer"] -= amount
+
+    save_data(data)
+
+    return data
+
+
+# =========================
+# CHAT HISTORY (AI)
+# =========================
+def add_chat(data, user_msg, ai_msg):
+
+    chat = {
+        "user": user_msg,
+        "ai": ai_msg,
+        "time": datetime.now().isoformat()
+    }
+
+    data["chat_history"].append(chat)
+
+    # giới hạn 100 chat
+    if len(data["chat_history"]) > 100:
+        data["chat_history"] = data["chat_history"][-100:]
+
+    save_data(data)
+
+    return data
