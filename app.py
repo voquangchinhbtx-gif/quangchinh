@@ -236,37 +236,6 @@ with st.sidebar:
             "💬 AI Assistant"
         ]
     )
-# --- 3. CAMERA AI (CHẨN ĐOÁN & CẢNH BÁO) ---
-elif menu == "📸 Camera AI":
-    st.title("📸 Camera Chẩn đoán & Cảnh báo Chuyên sâu")
-    
-    src_option = st.radio("Chọn nguồn hình ảnh:", ["Máy ảnh", "Tải ảnh từ máy"], horizontal=True)
-    
-    img_file = None
-if src_option == "Máy ảnh":
-    img_file = st.camera_input("Chụp ảnh vết bệnh")
-else:
-    img_file = st.file_uploader("Chọn tệp ảnh...", type=["jpg", "png", "jpeg"])
-
-if img_file:
-    image = Image.open(img_file)
-    st.image(image, caption="Ảnh đang phân tích", use_container_width=True)
-
-if st.button("🚀 Phân tích & Cảnh báo Chuyên sâu"):
-        with st.spinner("AI đang soi bệnh..."):
-            try:
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                w_info = f"{weather['temp']}°C, ẩm {weather['hum']}%" if weather else "Không rõ"
-                    
-                prompt = f"Phân tích ảnh này với thời tiết {w_info}. Đưa ra tên bệnh và phác đồ điều trị 3 bước."
-                response = model.generate_content([prompt, image])
-                st.success("✅ KẾT QUẢ")
-                st.markdown(response.text)
-            except Exception as e:
-                st.error(f"Lỗi: {e}")
-
-        
-
 
 # =========================
 # DASHBOARD
