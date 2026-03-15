@@ -281,7 +281,7 @@ if st.button("🚀 Phân tích & Cảnh báo Chuyên sâu"):
                     
                 except Exception as e:
                     st.error(f"Lỗi: {e}. Kiểm tra GEMINI_API_KEY trong Secrets.")
-# elif menu == "💬 AI Assistant":
+
         
 
 
