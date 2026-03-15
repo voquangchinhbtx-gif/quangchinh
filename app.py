@@ -236,43 +236,44 @@ with st.sidebar:
             "💬 AI Assistant"
         ]
     )
-# =========================
-# CAMERA AI NHẬN DIỆN
-# =========================
+# --- 3. CAMERA AI (CHẨN ĐOÁN & CẢNH BÁO) ---
 elif menu == "📸 Camera AI":
-    st.title("📸 Camera Chẩn đoán & Cảnh báo Chuyên sâu")
+    st.title("📸 Trợ lý Camera AI Chẩn đoán")
+    st.info("AI sẽ phân tích hình ảnh và kết hợp dữ liệu thời tiết thực tế để đưa ra cảnh báo.")
+
+    # Tích hợp cả 2 nguồn trong 1 giao diện gọn gàng
+    src_option = st.radio("Nguồn dữ liệu:", ["📸 Chụp trực tiếp", "📁 Tải ảnh từ máy"], horizontal=True)
     
-    src_option = st.radio("Chọn nguồn hình ảnh:", ["Máy ảnh (Chụp trực tiếp)", "Tải ảnh từ thư viện"])
-    
-    img_file = None 
-if src_option == "Máy ảnh (Chụp trực tiếp)":
-        img_file = st.camera_input("Chụp lá cây hoặc vết bệnh")
+    img_file = None
+    if src_option == "📸 Chụp trực tiếp":
+        img_file = st.camera_input("Chụp ảnh vết bệnh trên lá/thân cây")
     else:
-        img_file = st.file_uploader("Tải ảnh lên...", type=["jpg", "png", "jpeg"])
+        img_file = st.file_uploader("Chọn tệp hình ảnh...", type=["jpg", "png", "jpeg"])
 
-if img_file:
+    if img_file:
         image = Image.open(img_file)
-        st.image(image, caption="Ảnh đang chờ xử lý", use_container_width=True)
+        st.image(image, caption="Ảnh đang phân tích", use_container_width=True)
 
-if st.button("🚀 Phân tích & Cảnh báo Chuyên sâu"):
-            with st.spinner("AI đang soi bệnh và kiểm tra thời tiết..."):
+        if st.button("🚀 Bắt đầu Phân tích & Cảnh báo"):
+            with st.spinner("AI đang đối chiếu dữ liệu nông nghiệp..."):
                 try:
                     model = genai.GenerativeModel('gemini-1.5-flash')
                     
-                    w_info = f"{weather['temp']}°C, ẩm {weather['hum']}%, {weather['desc']}" if weather else "Không rõ"
+                    # Lấy bối cảnh thời tiết thực tế tại Huế
+                    w_txt = f"{weather['temp']}°C, ẩm {weather['hum']}%, {weather['desc']}" if weather else "Không có dữ liệu thời tiết"
                     
                     prompt = f"""
-                    Bạn là Chuyên gia Bảo vệ Thực vật chuyên về cây ớt và cây trồng cạn. 
-                    Dữ liệu thời tiết hiện tại: {w_info}.
-                    Hãy phân tích ảnh này và đưa ra chẩn đoán CHUYÊN SÂU:
-                    1. XÁC ĐỊNH: Tên bệnh/sâu hoặc tình trạng thiếu chất cụ thể.
-                    2. CẢNH BÁO: Với thời tiết {w_info}, bệnh này có dễ lây lan thành dịch không? Tại sao?
+                    Bạn là Chuyên gia Bảo vệ Thực vật cao cấp. 
+                    Dữ liệu thời tiết hiện tại: {w_txt}.
+                    Hãy phân tích ảnh cây trồng này và đưa ra:
+                    1. CHẨN ĐOÁN: Tên bệnh hoặc loại sâu hại.
+                    2. CẢNH BÁO: Với điều kiện {w_txt}, bệnh này có khả năng bùng phát mạnh không?
                     3. PHÁC ĐỒ ĐIỀU TRỊ: 
-                       - Bước 1 (Vật lý): Cách ly, cắt tỉa.
-                       - Bước 2 (Hữu cơ): Hoạt chất sinh học (Trichoderma, Nano bạc...).
-                       - Bước 3 (Hóa học): Thuốc đặc trị khi bệnh nặng.
-                    4. LỜI KHUYÊN PHÒNG BỆNH: Chỉnh sửa chế độ tưới/phân.
-                    Trả lời tiếng Việt, Markdown rõ ràng.
+                       - Bước 1 (Vật lý): Cắt tỉa, tiêu hủy lá bệnh.
+                       - Bước 2 (Sinh học): Sử dụng các loại như Nano Bạc, Trichoderma, dịch tỏi ớt.
+                       - Bước 3 (Hóa học): Chỉ nêu hoạt chất đặc trị nếu bệnh đã nặng.
+                    4. DỰ BÁO: Tình trạng cây sau 3 ngày tới nếu không xử lý.
+                    Trả lời bằng tiếng Việt, súc tích, định dạng Markdown rõ ràng.
                     """
                     
                     response = model.generate_content([prompt, image])
@@ -280,7 +281,7 @@ if st.button("🚀 Phân tích & Cảnh báo Chuyên sâu"):
                     st.markdown(response.text)
                     
                 except Exception as e:
-                    st.error(f"Lỗi: {e}. Kiểm tra GEMINI_API_KEY trong Secrets.")
+                    st.error(f"Lỗi phân tích: {e}. Vui lòng kiểm tra lại GEMINI_API_KEY.")
 
         
 
