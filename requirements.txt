@@ -1,1 +1,6 @@
-
+streamlit
+requests
+pandas
+Pillow
+google-generativeai
+streamlit-js-eval
