@@ -1,5 +1,23 @@
 import requests
 
+def get_city_name(lat, lon):
+    """Chuyển tọa độ → tên thành phố."""
+    try:
+        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json"
+        res = requests.get(url, timeout=5, headers={"User-Agent": "GreenFarm/1.0"})
+        data = res.json()
+        address = data.get("address", {})
+        city = (
+            address.get("city") or
+            address.get("town") or
+            address.get("village") or
+            address.get("county") or
+            "Vị trí của bạn"
+        )
+        return city
+    except:
+        return "Vị trí của bạn"
+
 def get_agri_warnings(temp, hum, desc):
     if temp is None or hum is None:
         return ["Đang chờ dữ liệu cảm biến để đưa ra cảnh báo..."]
@@ -35,7 +53,8 @@ def get_weather(lat=None, lon=None):
         try:
             lat  = float(lat)
             lon  = float(lon)
-            city = "Vị trí của bạn"
+            # ✅ Gọi reverse geocoding để lấy tên thành phố thật
+            city = get_city_name(lat, lon)
         except (ValueError, TypeError):
             lat, lon = DEFAULT_LAT, DEFAULT_LON
             city = DEFAULT_CITY
