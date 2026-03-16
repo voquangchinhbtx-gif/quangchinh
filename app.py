@@ -486,7 +486,7 @@ elif menu == "📸 Camera Chẩn đoán":
         if st.button("🚀 Bắt đầu Xét nghiệm AI", key="btn_cam_ai"):
             with st.spinner("Đang phân lập Vi khuẩn, Virus, Nấm, Sâu bọ..."):
                 try:
-                    model = genai.GenerativeModel("gemini-1.5-flash")
+                    model = genai.GenerativeModel("gemini-2.0-flash")
                     if weather and isinstance(weather, dict):
                         warnings_list = weather.get("agri_warnings", [])
                         w_info = f"""
@@ -636,7 +636,7 @@ elif menu == "💬 AI Assistant":
 
         with st.spinner("🤖 AI đang phân tích dữ liệu..."):
             try:
-                model = genai.GenerativeModel("gemini-1.5-flash")
+                model = genai.GenerativeModel("gemini-2.0-flash")
                 w_ctx = f"Nhiệt độ {temp_now}°C, Độ ẩm {hum_now}%, Thời tiết: {desc_now}"
 
                 full_prompt = f"""
