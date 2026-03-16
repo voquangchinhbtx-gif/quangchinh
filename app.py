@@ -13,8 +13,10 @@ from streamlit_js_eval import get_geolocation
 
 try:
     GENAI_KEY = st.secrets["GEMINI_API_KEY"]
+    GEMINI_MODEL = st.secrets.get("GEMINI_MODEL", "gemini-2.0-flash")
 except:
     GENAI_KEY = ""
+    GEMINI_MODEL = "gemini-2.0-flash"
 
 genai.configure(api_key=GENAI_KEY)
 
@@ -424,7 +426,7 @@ elif menu == "🌱 Quản lý Cây trồng":
                     if st.button("🌱 Tạo quy trình chuẩn", key=f"btn_std_{p['id']}"):
                         with st.spinner("AI đang tạo quy trình chuẩn & tính ngày thu hoạch..."):
                             try:
-                                model  = genai.GenerativeModel("gemini-2.0-flash")
+                                model  = genai.GenerativeModel(GEMINI_MODEL)
                                 w_info = safe_weather_str(weather)
 
                                 std_prompt = f"""
@@ -502,7 +504,7 @@ Ngày thu hoạch dự kiến: YYYY-MM-DD
                     if st.button("🔍 Phân tích tình trạng hôm nay", key=f"btn_analyze_{p['id']}"):
                         with st.spinner("AI đang phân tích tình trạng & đưa ra hướng xử lý..."):
                             try:
-                                model         = genai.GenerativeModel("gemini-2.0-flash")
+                                model         = genai.GenerativeModel(GEMINI_MODEL)
                                 w_info        = safe_weather_str(weather)
                                 current_logs  = " | ".join([l["c"] for l in p.get("logs", [])])
                                 warnings_list = weather.get("agri_warnings", []) if weather else []
@@ -578,7 +580,7 @@ Dựa trên tình trạng thực tế, đưa ra hướng xử lý CỤ THỂ cho
                     if st.button("🧠 AI: Tối ưu 15 ngày tới", key=f"btn_opt_{p['id']}"):
                         with st.spinner("Đang tổng hợp lịch sử & phân tích chuyên sâu..."):
                             try:
-                                model        = genai.GenerativeModel("gemini-2.0-flash")
+                                model        = genai.GenerativeModel(GEMINI_MODEL)
                                 w_info       = safe_weather_str(weather)
                                 current_logs = " | ".join([l["c"] for l in p.get("logs", [])])
                                 past_seasons = get_crop_history(data, crop_type)
@@ -704,7 +706,7 @@ elif menu == "📸 Camera Chẩn đoán":
         if st.button("🚀 Bắt đầu Xét nghiệm AI", key="btn_cam_ai"):
             with st.spinner("Đang phân lập Vi khuẩn, Virus, Nấm, Sâu bọ..."):
                 try:
-                    model = genai.GenerativeModel("gemini-2.0-flash")
+                    model = genai.GenerativeModel(GEMINI_MODEL)
                     if weather and isinstance(weather, dict):
                         warnings_list = weather.get("agri_warnings", [])
                         w_info = f"""
@@ -855,7 +857,7 @@ elif menu == "💬 AI Assistant":
 
         with st.spinner("🤖 AI đang phân tích dữ liệu..."):
             try:
-                model = genai.GenerativeModel("gemini-2.0-flash")
+                model = genai.GenerativeModel(GEMINI_MODEL)
                 w_ctx = f"Nhiệt độ {temp_now}°C, Độ ẩm {hum_now}%, Thời tiết: {desc_now}"
 
                 full_prompt = f"""
