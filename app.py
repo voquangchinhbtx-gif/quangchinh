@@ -1,25 +1,14 @@
 import streamlit as st
-import requests
 import math
 import google.generativeai as genai
 from PIL import Image
 from datetime import datetime
-# ✅ FIX: thêm save_data vào import
 from database import load_data, save_data, add_plant, delete_plant, add_chat
 from weather import get_weather
 
 # =========================
 # CẤU HÌNH
 # =========================
-
-try:
-    API_KEY = st.secrets["OPENWEATHER_API_KEY"]
-    LAT     = st.secrets.get("LAT", 16.4637)
-    LON     = st.secrets.get("LON", 107.5909)
-except:
-    # ✅ FIX: không hardcode key thật
-    API_KEY = ""
-    LAT, LON = 16.4637, 107.5909
 
 try:
     GENAI_KEY = st.secrets["GEMINI_API_KEY"]
@@ -42,7 +31,7 @@ FARM_RESOURCES = {
         "Hóa học (Khi bệnh nặng)": "Metalaxyl, Validamycin."
     },
     "Trị côn trùng": {
-        "Sinh học (Ưu tiên)":     "BT, Dịch tỏi ớt, Nấm xanh Metarhizium.",
+        "Sinh học (Ưu tiên)":      "BT, Dịch tỏi ớt, Nấm xanh Metarhizium.",
         "Hóa học (Khi bùng dịch)": "Abamectin."
     }
 }
@@ -101,7 +90,7 @@ CROP_KNOWLEDGE = {
 }
 
 # =========================
-# AI CẢNH BÁO và CHẨN ĐOÁN
+# AI CẢNH BÁO
 # =========================
 
 def ai_crop_warning(stage, weather):
@@ -135,23 +124,13 @@ def calculate_vpd(temp, humidity):
     return svp - avp
 
 # =========================
-# HELPER: weather string an toàn
+# HELPER
 # =========================
 
 def safe_weather_str(w):
     if not w:
         return "N/A"
-    temp = w.get("temp", "?")
-    hum  = w.get("hum",  "?")
-    return f"{temp}°C, {hum}% ẩm"
-
-# =========================
-# LẤY THỜI TIẾT (CACHE)
-# =========================
-
-@st.cache_data(ttl=600)
-def fetch_weather_data():
-    return get_weather()
+    return f"{w.get('temp', '?')}°C, {w.get('hum', '?')}% ẩm"
 
 # =========================
 # STREAMLIT CONFIG
@@ -163,9 +142,80 @@ st.set_page_config(
     page_icon="🌶️"
 )
 
-# ✅ FIX: load_data() và weather chỉ gọi 1 lần duy nhất
+# =========================
+# 📍 LẤY GPS TỪ TRÌNH DUYỆT
+# Inject JS một lần duy nhất khi app khởi động,
+# tọa độ được truyền vào qua query params rồi lưu session_state
+# =========================
+
+if "gps_lat" not in st.session_state:
+    st.session_state["gps_lat"] = None
+    st.session_state["gps_lon"] = None
+    st.session_state["gps_done"] = False
+
+# Đọc query params nếu JS đã gửi tọa độ về
+qp = st.query_params
+if "lat" in qp and "lon" in qp and not st.session_state["gps_done"]:
+    try:
+        st.session_state["gps_lat"]  = float(qp["lat"])
+        st.session_state["gps_lon"]  = float(qp["lon"])
+        st.session_state["gps_done"] = True
+        # Xoá query params khỏi URL cho gọn
+        st.query_params.clear()
+    except (ValueError, TypeError):
+        st.session_state["gps_done"] = True
+
+# Inject JS xin quyền GPS — chỉ chạy khi chưa có tọa độ
+if not st.session_state["gps_done"]:
+    st.components.v1.html(
+        """
+        <script>
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(pos) {
+                    const lat = pos.coords.latitude.toFixed(6);
+                    const lon = pos.coords.longitude.toFixed(6);
+                    // Gửi tọa độ vào URL để Streamlit đọc
+                    const url = new URL(window.parent.location.href);
+                    url.searchParams.set('lat', lat);
+                    url.searchParams.set('lon', lon);
+                    window.parent.location.href = url.toString();
+                },
+                function(err) {
+                    // Người dùng từ chối hoặc lỗi — đánh dấu done để không hỏi lại
+                    const url = new URL(window.parent.location.href);
+                    url.searchParams.set('lat', '16.4637');
+                    url.searchParams.set('lon', '107.5909');
+                    window.parent.location.href = url.toString();
+                },
+                { timeout: 8000, maximumAge: 300000 }
+            );
+        } else {
+            const url = new URL(window.parent.location.href);
+            url.searchParams.set('lat', '16.4637');
+            url.searchParams.set('lon', '107.5909');
+            window.parent.location.href = url.toString();
+        }
+        </script>
+        <p style="color: gray; font-size: 13px;">📍 Đang xác định vị trí...</p>
+        """,
+        height=40,
+    )
+    st.stop()  # Dừng render cho đến khi có tọa độ
+
+# =========================
+# LẤY THỜI TIẾT (CACHE theo tọa độ)
+# =========================
+
+@st.cache_data(ttl=600)
+def fetch_weather_data(lat, lon):
+    return get_weather(lat=lat, lon=lon)
+
 data    = load_data()
-weather = fetch_weather_data()
+weather = fetch_weather_data(
+    st.session_state["gps_lat"],
+    st.session_state["gps_lon"]
+)
 
 # =========================
 # SIDEBAR
@@ -173,6 +223,12 @@ weather = fetch_weather_data()
 
 with st.sidebar:
     st.title("🌶️ Aji Farm AI")
+
+    # Hiển thị vị trí đang dùng
+    if weather:
+        city = weather.get("city", "Vị trí của bạn")
+        st.caption(f"📍 {city}")
+
     menu = st.radio(
         "Menu",
         [
@@ -191,10 +247,13 @@ if menu == "📊 Dashboard Chuyên sâu":
     st.title("📊 Quan trắc VPD & Thời tiết")
 
     if weather:
+        city = weather.get("city", "Vị trí của bạn")
+        st.markdown(f"📍 **{city}** — {weather.get('lat', '')}°N, {weather.get('lon', '')}°E")
+
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Nhiệt độ", f"{weather['temp']}°C")
-        c2.metric("Độ ẩm",    f"{weather['hum']}%")
-        c3.metric("Mưa",      f"{weather['rain']}mm")
+        c1.metric("Nhiệt độ",  f"{weather['temp']}°C")
+        c2.metric("Độ ẩm",     f"{weather['hum']}%")
+        c3.metric("Mưa",       f"{weather['rain']}mm")
         c4.metric("Thời tiết", weather['desc'].capitalize())
 
         vpd = calculate_vpd(weather['temp'], weather['hum'])
@@ -206,6 +265,13 @@ if menu == "📊 Dashboard Chuyên sâu":
             st.warning("Không khí khô")
         else:
             st.success("Điều kiện sinh trưởng tốt")
+
+        # Cảnh báo nông nghiệp
+        warnings = weather.get("agri_warnings", [])
+        if warnings:
+            st.markdown("### 🚨 Cảnh báo Nông nghiệp")
+            for w in warnings:
+                st.info(w)
     else:
         st.error("Không lấy được dữ liệu thời tiết")
 
@@ -213,7 +279,6 @@ if menu == "📊 Dashboard Chuyên sâu":
 # QUẢN LÝ CÂY TRỒNG
 # =========================
 
-# ✅ FIX: đổi if → elif để tránh chạy đồng thời nhiều menu
 elif menu == "🌱 Quản lý Cây trồng":
     st.title("🌱 Quản lý Vườn & Hệ thống Tối ưu AI")
 
@@ -261,7 +326,6 @@ elif menu == "🌱 Quản lý Cây trồng":
                 )
                 new_n = st.text_input("Sửa tên định danh", value=p_edit["name"], key="edit_name")
 
-                # ✅ guard parse date an toàn
                 try:
                     edit_date_val = datetime.strptime(p_edit["date"], "%Y-%m-%d")
                 except (ValueError, KeyError):
@@ -292,11 +356,9 @@ elif menu == "🌱 Quản lý Cây trồng":
             with st.container(border=True):
                 col_info, col_care, col_action = st.columns([1.2, 2.5, 0.8])
 
-                # ---- CỘT THÔNG TIN ---- #
                 with col_info:
                     st.subheader(f"🌿 {p['name']}")
 
-                    # ✅ guard parse date
                     try:
                         plant_date = datetime.strptime(p["date"], "%Y-%m-%d")
                     except (ValueError, KeyError):
@@ -327,7 +389,6 @@ elif menu == "🌱 Quản lý Cây trồng":
                                 st.warning("Nhật ký không được để trống.")
 
                         st.write("---")
-                        # ✅ list() trước reversed để slice được
                         recent_logs = list(reversed(p.get("logs", [])))[:3]
                         if recent_logs:
                             for log in recent_logs:
@@ -335,9 +396,7 @@ elif menu == "🌱 Quản lý Cây trồng":
                         else:
                             st.caption("Chưa có nhật ký nào.")
 
-                # ---- CỘT CHĂM SÓC / AI ---- #
                 with col_care:
-                    # ✅ giới hạn split 1 lần tránh edge case
                     parts     = p["name"].split("|", 1)
                     crop_type = parts[1].strip() if len(parts) > 1 else parts[0].strip()
 
@@ -400,7 +459,6 @@ Giữ ngắn gọn, thực tế, tránh lý thuyết chung chung.
                     else:
                         st.caption("Chưa có quy trình tối ưu. Hãy nhấn nút AI.")
 
-                # ---- CỘT THAO TÁC ---- #
                 with col_action:
                     st.caption("⚙️ Thao tác")
 
@@ -412,7 +470,6 @@ Giữ ngắn gọn, thực tế, tránh lý thuyết chung chung.
                             st.rerun()
 
                     if weather:
-                        # ✅ guard từng field riêng
                         temp = weather.get("temp")
                         hum  = weather.get("hum")
                         if temp is not None:
@@ -434,9 +491,6 @@ elif menu == "📸 Camera Chẩn đoán":
     3. Nếu có thể, hãy để một phần lá lành trong khung hình để AI đối chiếu.
     """)
 
-    # ------------------------------------------------------------------ #
-    # CHỌN CÂY & CHỤP ẢNH
-    # ------------------------------------------------------------------ #
     plants_list = data.get("plants", [])
     selected_p  = None
 
@@ -456,15 +510,11 @@ elif menu == "📸 Camera Chẩn đoán":
         image = Image.open(img_file)
         st.image(image, width=450, caption="Dữ liệu hình ảnh")
 
-        # ------------------------------------------------------------------ #
-        # NÚT CHẨN ĐOÁN
-        # ------------------------------------------------------------------ #
         if st.button("🚀 Bắt đầu Xét nghiệm AI", key="btn_cam_ai"):
             with st.spinner("Đang phân lập Vi khuẩn, Virus, Nấm, Sâu bọ..."):
                 try:
                     model = genai.GenerativeModel("gemini-1.5-flash")
 
-                    # Chuẩn bị context thời tiết an toàn
                     if weather and isinstance(weather, dict):
                         warnings_list = weather.get("agri_warnings", [])
                         w_info = f"""
@@ -475,7 +525,7 @@ THÔNG TIN THỜI TIẾT THỰC ĐỊA:
 - Cảnh báo nấm bệnh: {', '.join(warnings_list) if warnings_list else 'Không có'}
 """
                     else:
-                        w_info = "Không có dữ liệu thời tiết (ngoại tuyến). AI chỉ dựa trên hình ảnh."
+                        w_info = "Không có dữ liệu thời tiết. AI chỉ dựa trên hình ảnh."
 
                     prompt = f"""
 Bạn là chuyên gia bệnh lý thực vật cấp cao với 20 năm kinh nghiệm thực địa tại Đông Nam Á.
@@ -543,18 +593,13 @@ Trả lời BẰNG TIẾNG VIỆT theo đúng format:
 - **Rủi ro lây sang cây khác:** [Thấp / Cao — con đường lây]
 - **Khuyến nghị khẩn:** [Hành động cần làm NGAY trong 24h]
 """
-                    # ✅ encode ảnh đúng format cho Gemini API
                     img_bytes  = img_file.getvalue()
-                    image_part = {
-                        "mime_type": "image/jpeg",
-                        "data":      img_bytes
-                    }
+                    image_part = {"mime_type": "image/jpeg", "data": img_bytes}
 
                     res    = model.generate_content([prompt, image_part])
                     result = getattr(res, "text", None)
 
                     if result:
-                        # ✅ lưu session_state để không mất sau rerun
                         st.session_state["last_diagnosis"] = {
                             "result":   result,
                             "plant_id": selected_p["id"] if selected_p else None,
@@ -566,9 +611,6 @@ Trả lời BẰNG TIẾNG VIỆT theo đúng format:
                     st.error(f"Lỗi hệ thống: {e}")
                     st.info("Kiểm tra lại kết nối mạng hoặc API Key Gemini.")
 
-        # ------------------------------------------------------------------ #
-        # HIỂN THỊ KẾT QUẢ — nằm NGOÀI block spinner, render độc lập
-        # ------------------------------------------------------------------ #
         diag = st.session_state.get("last_diagnosis")
 
         if diag:
@@ -576,15 +618,12 @@ Trả lời BẰNG TIẾNG VIỆT theo đúng format:
             st.subheader("🔬 Kết quả chẩn đoán")
             st.markdown(diag["result"])
 
-            # ✅ nút lưu nằm NGOÀI block chẩn đoán
             if selected_p:
                 if st.button("📥 Lưu chẩn đoán vào Nhật ký cây", key="btn_save_diag"):
-                    # ✅ cắt đẹp theo từ, không cắt giữa chừng
                     summary = diag["result"]
                     if len(summary) > 120:
                         summary = summary[:120].rsplit(" ", 1)[0] + "..."
 
-                    # ✅ tìm đúng object trong data["plants"] để sửa
                     for plant in data["plants"]:
                         if plant["id"] == selected_p["id"]:
                             if "logs" not in plant:
@@ -607,12 +646,14 @@ Trả lời BẰNG TIẾNG VIỆT theo đúng format:
 elif menu == "💬 AI Assistant":
     st.title("💬 Trợ lý Kỹ thuật")
 
-    if weather and isinstance(weather, dict):
-        st.caption(f"📍 Bối cảnh thực địa: {weather.get('temp','?')}°C - {weather.get('hum','?')}% ẩm")
-    else:
-        st.caption("⚠️ Chế độ ngoại tuyến: AI không có dữ liệu thời tiết.")
+    # Hiển thị thời tiết thực tế — weather luôn có giá trị
+    city     = weather.get("city", "Vị trí của bạn")
+    temp_now = weather.get("temp", "?")
+    hum_now  = weather.get("hum",  "?")
+    desc_now = weather.get("desc", "")
+    st.caption(f"📍 {city}: {temp_now}°C — {hum_now}% ẩm — {desc_now}")
 
-    # 1. KHUNG LỊCH SỬ CHAT
+    # LỊCH SỬ CHAT
     chat_container = st.container()
     with chat_container:
         for chat in data.get("chat_history", []):
@@ -621,7 +662,7 @@ elif menu == "💬 AI Assistant":
             with st.chat_message("assistant"):
                 st.markdown(chat["ai"])
 
-    # 2. XỬ LÝ NHẬP LIỆU
+    # NHẬP LIỆU
     if prompt := st.chat_input("Hỏi AI về kỹ thuật vườn, phân bón, sâu bệnh..."):
         with st.chat_message("user"):
             st.write(prompt)
@@ -630,15 +671,11 @@ elif menu == "💬 AI Assistant":
             try:
                 model = genai.GenerativeModel("gemini-1.5-flash")
 
-                w_ctx = (
-                    f"Nhiệt độ {weather.get('temp','?')}°C, Độ ẩm {weather.get('hum','?')}%"
-                    if isinstance(weather, dict)
-                    else "Không có dữ liệu thời tiết thực địa"
-                )
+                w_ctx = f"Nhiệt độ {temp_now}°C, Độ ẩm {hum_now}%, Thời tiết: {desc_now}"
 
                 full_prompt = f"""
 Bạn là Chuyên gia Nông nghiệp Công nghệ cao.
-Dữ liệu thời tiết hiện tại: {w_ctx}
+Dữ liệu thời tiết hiện tại tại {city}: {w_ctx}
 Câu hỏi của nông dân: {prompt}
 
 Yêu cầu:
@@ -657,7 +694,6 @@ Yêu cầu:
                 with st.chat_message("assistant"):
                     st.markdown(ai_res)
 
-                # 3. LƯU VÀO DATABASE
                 add_chat(data, prompt, ai_res)
                 st.rerun()
 
