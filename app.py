@@ -144,6 +144,8 @@ if st.session_state["gps_lat"] is None:
 # LẤY THỜI TIẾT (CACHE)
 # =========================
 
+from weather import get_weather
+
 @st.cache_data(ttl=600)
 def fetch_weather_data(lat, lon):
     return get_weather(lat=lat, lon=lon)
