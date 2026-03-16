@@ -258,163 +258,222 @@ if menu == "📊 Dashboard Chuyên sâu":
 # QUẢN LÝ CÂY
 # =========================
 
-elif menu == "🌱 Quản lý Cây trồng":
-    st.title("🌱 Quản lý Vườn & Quy trình AI Chuyên sâu")
+if menu == "🌱 Quản lý Cây trồng":
+    st.title("🌱 Quản lý Vườn & Hệ thống Tối ưu AI")
 
-    # ==========================================
-    # 1. KHUNG QUẢN TRỊ (THÊM & SỬA)
-    # ==========================================
-    with st.expander("⚙️ Thiết lập danh sách cây trồng (Thêm/Sửa)"):
-        tab_add, tab_edit = st.tabs(["➕ Thêm cây & Lập quy trình AI", "✏️ Chỉnh sửa thông tin"])
-        
+    # ------------------------------------------------------------------ #
+    # HELPER: lấy weather an toàn
+    # ------------------------------------------------------------------ #
+    def safe_weather_str(w):
+        if not w:
+            return "N/A"
+        temp = w.get("temp", "?")
+        hum  = w.get("hum",  "?")
+        return f"{temp}°C, {hum}% ẩm"
+
+    # ------------------------------------------------------------------ #
+    # 1. KHUNG QUẢN TRỊ: THÊM & SỬA
+    # ------------------------------------------------------------------ #
+    with st.expander("⚙️ Thiết lập & Quản lý danh sách cây", expanded=False):
+        tab_add, tab_edit = st.tabs(["➕ Thêm cây mới", "✏️ Chỉnh sửa thông tin"])
+
         with tab_add:
             c1, c2 = st.columns(2)
-            with c1: 
-                name_in = st.text_input("Tên định danh cây", placeholder="Ví dụ: Chậu ớt 01")
-            with c2: 
-                type_in = st.text_input("Loại cây (AI lập quy trình)", placeholder="Ví dụ: Ớt Aji Charapita")
-            
-            date_in = st.date_input("Ngày trồng thực tế", value=datetime.now())
-            
-            # --- XỬ LÝ NÚT AI CÓ SESSION STATE ĐỂ TRÁNH CHẠY LẠI KHI LOAD ---
-            if st.button("🚀 AI Lập quy trình & Lưu vào vườn", key="btn_add_ai"):
-                if name_in.strip() and type_in.strip():
-                    with st.spinner(f"AI đang tra cứu dữ liệu mở cho {type_in}..."):
-                        try:
-                            # Cấu hình AI
-                            model = genai.GenerativeModel("gemini-1.5-flash")
-                            prompt = f"""
-                            Lập quy trình chăm sóc chi tiết cho cây: {type_in}. 
-                            Yêu cầu:
-                            - Chia giai đoạn: Cây con, Sinh trưởng, Ra hoa/Trái. 
-                            - Mỗi giai đoạn nêu cách tưới nước, bón phân hữu cơ và ngừa bệnh.
-                            - Ngôn ngữ: Tiếng Việt, ngắn gọn, thực dụng.
-                            """
-                            res = model.generate_content(prompt)
-                            
-                            # 1️⃣ BẢO VỆ res.text - getattr chặn crash nếu res rỗng
-                            result_text = getattr(res, "text", None) or "⚠️ AI chưa trả về văn bản quy trình."
-                            
-                            # Lưu vào Session State để hiển thị ngay mà không bị mất khi load lại
-                            st.session_state[f"last_ai_plan"] = result_text
-                            
-                            # Lưu vào database
-                            full_identity = f"{name_in} | {type_in}"
-                            data = add_plant(data, full_identity, date_in.strftime("%Y-%m-%d"))
-                            
-                            st.success(f"Đã lưu thành công cây {name_in}!")
-                        except Exception as e:
-                            st.error(f"Lỗi hệ thống AI: {e}")
-                else:
-                    st.warning("Vui lòng không để trống Tên định danh hoặc Loại cây.")
+            with c1:
+                name_in = st.text_input(
+                    "Tên định danh cây",
+                    placeholder="Ví dụ: Ớt Aji - Lứa 01",
+                    key="add_name"
+                )
+            with c2:
+                type_in = st.text_input(
+                    "Loại cây cụ thể",
+                    placeholder="Ví dụ: Ớt Aji Charapita",
+                    key="add_type"
+                )
 
-            # Hiển thị quy trình AI vừa tạo (Nếu có trong ngăn nhớ tạm)
-            if "last_ai_plan" in st.session_state:
-                st.markdown("---")
-                st.markdown("### 📋 Quy trình AI vừa lập:")
-                st.info(st.session_state["last_ai_plan"])
-                if st.button("🗑️ Đóng bảng quy trình"):
-                    del st.session_state["last_ai_plan"]
+            date_in = st.date_input("Ngày trồng thực tế", value=datetime.now(), key="add_date")
+
+            if st.button("🚀 Khởi tạo vườn", key="btn_init_farm"):
+                if name_in.strip() and type_in.strip():
+                    full_id = f"{name_in} | {type_in}"
+                    data = add_plant(data, full_id, date_in.strftime("%Y-%m-%d"))
+                    save_data(data)  # ✅ persist về DB
+                    st.success(f"Đã thêm **{name_in}** vào hệ thống!")
                     st.rerun()
+                else:
+                    st.warning("Vui lòng điền đủ Tên và Loại cây.")
 
         with tab_edit:
             all_p = data.get("plants", [])
             if all_p:
-                p_edit = st.selectbox("Chọn cây muốn chỉnh sửa", all_p, format_func=lambda x: x['name'])
-                new_n = st.text_input("Đổi tên định danh", value=p_edit['name'])
-                new_d = st.date_input("Sửa ngày trồng", value=datetime.strptime(p_edit['date'], "%Y-%m-%d"))
-                
-                if st.button("💾 Lưu cập nhật"):
-                    for p in data['plants']:
-                        if p['id'] == p_edit['id']:
-                            p['name'], p['date'] = new_n, new_d.strftime("%Y-%m-%d")
-                    st.success("Đã cập nhật thông tin!"); st.rerun()
-            else:
-                st.info("Chưa có cây nào để chỉnh sửa.")
+                p_edit = st.selectbox(
+                    "Chọn cây muốn sửa",
+                    all_p,
+                    format_func=lambda x: x["name"],
+                    key="sb_edit"
+                )
 
-    # ==========================================
-    # 2. HIỂN THỊ DANH SÁCH & QUY TRÌNH (BẢO VỆ TUYỆT ĐỐI)
-    # ==========================================
+                new_n = st.text_input("Sửa tên định danh", value=p_edit["name"], key="edit_name")
+
+                # ✅ guard parse date an toàn
+                try:
+                    edit_date_val = datetime.strptime(p_edit["date"], "%Y-%m-%d")
+                except (ValueError, KeyError):
+                    edit_date_val = datetime.now()
+
+                new_d = st.date_input("Sửa ngày trồng", value=edit_date_val, key="edit_date")
+
+                if st.button("💾 Lưu cập nhật", key="btn_update"):
+                    for p in data["plants"]:
+                        if p["id"] == p_edit["id"]:
+                            p["name"] = new_n
+                            p["date"] = new_d.strftime("%Y-%m-%d")
+                    save_data(data)  # ✅ persist về DB
+                    st.success("Đã cập nhật!")
+                    st.rerun()
+            else:
+                st.info("Chưa có cây nào để sửa.")
+
+    # ------------------------------------------------------------------ #
+    # 2. DANH SÁCH CÂY & QUY TRÌNH TỐI ƯU
+    # ------------------------------------------------------------------ #
     plants_list = data.get("plants", [])
-    
+
     if not plants_list:
         st.info("🌵 Vườn hiện tại chưa có cây. Hãy thêm cây mới ở trên.")
     else:
         for p in plants_list:
             with st.container(border=True):
-                col_info, col_care, col_action = st.columns([1, 2, 1])
-                
-                # --- CỘT 1: THÔNG TIN (TÍNH TUỔI CHUẨN) ---
+                col_info, col_care, col_action = st.columns([1.2, 2.5, 0.8])
+
+                # ---- CỘT THÔNG TIN ---- #
                 with col_info:
                     st.subheader(f"🌿 {p['name']}")
-                    # 5️⃣ TỐI ƯU TÍNH TUỔI CÂY (Theo Tèo - Chống ngày âm)
-                    plant_date = datetime.strptime(p["date"], "%Y-%m-%d")
-                    delta = datetime.now() - plant_date
-                    age = max(delta.days, 0)
-                    
-                    st.write(f"⏱️ Tuổi cây: **{age} ngày**")
-                    st.caption(f"📅 Trồng ngày: {p['date']}")
 
-                # --- CỘT 2: PHÁC ĐỒ CHĂM SÓC (TỰ ĐỘNG THEO LOẠI) ---
-                with col_care:
-                    # 2️⃣ SỬA CÁCH TÁCH LOẠI CÂY (An toàn tuyệt đối)
-                    parts = p["name"].split("|")
-                    crop_type_extracted = parts[1].strip() if len(parts) > 1 else parts[0].strip()
-                    
-                    st.markdown(f"📋 **Quy trình: {crop_type_extracted}**")
-                    
-                    with st.expander("Phác đồ chi tiết từng giai đoạn"):
-                        # 3️⃣ TRÁNH CRASH NẾU THIẾU KEY (Fallback về 'Chung')
-                        k_key = next((k for k in CROP_KNOWLEDGE.keys() if k in p['name']), None)
-                        stages = CROP_KNOWLEDGE.get(k_key, CROP_KNOWLEDGE.get("Chung", []))
-                        
-                        if stages:
-                            # Tìm giai đoạn hiện tại
-                            curr = next((s for s in stages if s['days'][0] <= age <= s['days'][1]), stages[-1])
-                            
-                            st.info(f"📍 Hiện tại: **{curr['stage']}**")
-                            
-                            t_org, t_back = st.tabs(["🍃 Hữu cơ", "🧪 Dự phòng"])
-                            with t_org:
-                                st.write(curr["organic"])
-                                st.caption(f"Vật tư: {FARM_RESOURCES['Dinh dưỡng']['Hữu cơ (Ưu tiên)']}")
-                            with t_back:
-                                st.write(curr["backup"])
-                            
-                            st.caption(f"📌 **Ghi chú:** {curr['note']}")
-                            
-                            # 4️⃣ BẢO VỆ WEATHER KHI GỌI CẢNH BÁO
-                            warn = ai_crop_warning(curr["stage"], weather) if weather else None
-                            if warn:
-                                st.error(f"🤖 AI Nhắc nhở: {warn}")
-                        else:
-                            st.warning("⚠️ Chưa có dữ liệu phác đồ sẵn có.")
+                    # ✅ guard parse date
+                    try:
+                        plant_date = datetime.strptime(p["date"], "%Y-%m-%d")
+                    except (ValueError, KeyError):
+                        plant_date = datetime.now()
 
-                # --- CỘT 3: THAO TÁC (XÓA 2 LỚP - HỎI LÝ DO) ---
-                with col_action:
-                    st.caption("⚙️ Thao tác nhanh")
-                    
-                    with st.popover("🗑️ Gỡ bỏ cây"):
-                        st.warning(f"Xác nhận gỡ {p['name']}?")
-                        reason = st.radio(
-                            "Lý do gỡ bỏ:", 
-                            ["🎉 Đã thu hoạch", "🥀 Cây hỏng/Nhổ bỏ"], 
-                            key=f"re_{p['id']}"
+                    age = max((datetime.now() - plant_date).days, 0)
+                    st.write(f"⏱️ **{age} ngày tuổi**")
+                    st.divider()
+
+                    with st.popover("📖 Nhật ký vườn"):
+                        st.write(f"📝 Ghi chép cho **{p['name']}**")
+                        log_text = st.text_area(
+                            "Hôm nay có gì mới? (Bón phân, tình trạng cây...)",
+                            key=f"log_area_{p['id']}"
                         )
-                        
-                        if st.button("✔️ Chốt gỡ", key=f"del_{p['id']}", type="primary"):
+                        if st.button("Lưu nhật ký", key=f"btn_log_{p['id']}"):
+                            if log_text.strip():
+                                if "logs" not in p:
+                                    p["logs"] = []
+                                p["logs"].append({
+                                    "d": datetime.now().strftime("%d/%m %H:%M"),
+                                    "c": log_text.strip()
+                                })
+                                save_data(data)  # ✅ persist về DB
+                                st.success("Đã ghi sổ!")
+                                st.rerun()
+                            else:
+                                st.warning("Nhật ký không được để trống.")
+
+                        st.write("---")
+                        # ✅ list() trước reversed để slice được
+                        recent_logs = list(reversed(p.get("logs", [])))[:3]
+                        if recent_logs:
+                            for log in recent_logs:
+                                st.caption(f"📅 {log['d']}: {log['c']}")
+                        else:
+                            st.caption("Chưa có nhật ký nào.")
+
+                # ---- CỘT CHĂM SÓC / AI ---- #
+                with col_care:
+                    # ✅ giới hạn split 1 lần tránh edge case
+                    parts     = p["name"].split("|", 1)
+                    crop_type = parts[1].strip() if len(parts) > 1 else parts[0].strip()
+
+                    st.markdown(f"📋 **Phác đồ tối ưu AI cho: {crop_type}**")
+
+                    if st.button("🧠 AI: Tối ưu 15 ngày tới", key=f"btn_opt_{p['id']}"):
+                        with st.spinner("Đang phân tích nhật ký & dữ liệu mở..."):
+                            try:
+                                model   = genai.GenerativeModel("gemini-1.5-flash")
+                                history = " | ".join([l["c"] for l in p.get("logs", [])])
+                                w_info  = safe_weather_str(weather)  # ✅ dùng helper
+
+                                prompt = f"""
+Bạn là chuyên gia nông nghiệp hữu cơ thực chiến. Trả lời BẰNG TIẾNG VIỆT.
+Thông tin cây: {crop_type}, {age} ngày tuổi. Thời tiết hiện tại: {w_info}.
+Nhật ký thực tế: {history if history else "Chưa có dữ liệu"}.
+
+NHIỆM VỤ: Lập quy trình chăm sóc 15 ngày tới, trình bày theo đúng format sau:
+
+### 🌿 DINH DƯỠNG
+- Ưu tiên phân hữu cơ: [tên, liều lượng, tần suất]
+- Phân vô cơ dự phòng (nếu cần): [tên, liều lượng]
+
+### 🛡️ BẢO VỆ THỰC VẬT
+- Sinh học ưu tiên: [tên sản phẩm, cách dùng]
+- Hóa học dự phòng (nếu bùng phát): [tên, liều lượng]
+
+### 🔧 ĐIỀU CHỈNH TỪ NHẬT KÝ
+- [Phân tích lỗi chăm sóc nếu có, hoặc ghi "Không có vấn đề cần điều chỉnh"]
+
+### 📅 LỊCH 15 NGÀY
+| Ngày  | Việc cần làm |
+|-------|-------------|
+| 1-5   | ... |
+| 6-10  | ... |
+| 11-15 | ... |
+
+Giữ ngắn gọn, thực tế, tránh lý thuyết chung chung.
+"""
+                                res         = model.generate_content(prompt)
+                                recipe_text = getattr(res, "text", None)
+
+                                if recipe_text:
+                                    p["optimized_recipe"] = recipe_text
+                                    save_data(data)  # ✅ persist về DB
+                                    st.session_state[f"st_view_{p['id']}"] = recipe_text
+                                else:
+                                    st.warning("AI không trả về kết quả. Vui lòng thử lại.")
+
+                            except Exception as e:
+                                st.error(f"Lỗi kết nối AI: {e}")
+
+                    plan_display = st.session_state.get(
+                        f"st_view_{p['id']}",
+                        p.get("optimized_recipe")
+                    )
+                    if plan_display:
+                        with st.expander("📍 XEM QUY TRÌNH ĐÃ LƯU", expanded=True):
+                            st.markdown(plan_display)
+                    else:
+                        st.caption("Chưa có quy trình tối ưu. Hãy nhấn nút AI.")
+
+                # ---- CỘT THAO TÁC ---- #
+                with col_action:
+                    st.caption("⚙️ Thao tác")
+
+                    with st.popover("🗑️ Kết thúc vụ"):
+                        st.warning(f"Xác nhận gỡ **{p['name']}** khỏi vườn?")
+                        if st.button("✔️ Xác nhận xoá", key=f"btn_del_{p['id']}", type="primary"):
                             data = delete_plant(data, p["id"])
-                            if "thu hoạch" in reason.lower():
-                                st.toast(f"Đã lưu thu hoạch {p['name']}!", icon="🎊")
+                            save_data(data)  # ✅ persist về DB
                             st.rerun()
 
-                    # Tiện ích thời tiết mini bảo vệ bằng .get()
-                    if weather and isinstance(weather, dict):
-                        st.divider()
-                        temp = weather.get('temp', 0)
-                        hum = weather.get('hum', 0)
-                        if temp > 32: st.warning(f"🥵 {temp}°C (Nóng)")
-                        if hum > 80: st.error(f"🦠 {hum}% (Ẩm)")
+                    if weather:
+                        # ✅ guard từng field riêng
+                        temp = weather.get("temp")
+                        hum  = weather.get("hum")
+                        if temp is not None:
+                            st.metric("🌡️ Nhiệt độ", f"{temp}°C")
+                        if hum is not None:
+                            st.metric("💧 Độ ẩm", f"{hum}%")
 
 
 # =========================
