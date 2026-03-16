@@ -4,7 +4,6 @@ import google.generativeai as genai
 from PIL import Image
 from datetime import datetime
 from database import load_data, save_data, add_plant, delete_plant, add_chat, get_crop_history, archive_and_delete_plant
-from weather import get_weather
 from streamlit_js_eval import get_geolocation
 
 # =========================
