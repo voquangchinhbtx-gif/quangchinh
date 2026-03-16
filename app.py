@@ -136,7 +136,7 @@ def build_season_context(history):
 # STREAMLIT CONFIG
 # =========================
 
-st.set_page_config(page_title="Aji Farm Pro", layout="wide", page_icon="🌶️")
+st.set_page_config(page_title="GREEN FARM", layout="wide", page_icon="🌿")
 
 # =========================
 # 📍 LẤY GPS TỪ TRÌNH DUYỆT
@@ -180,7 +180,7 @@ weather = fetch_weather_data(st.session_state["gps_lat"], st.session_state["gps_
 # =========================
 
 with st.sidebar:
-    st.title("🌶️ Aji Farm AI")
+    st.title("🌿 GREEN FARM")
     if weather:
         st.caption(f"📍 {weather.get('city', 'Vị trí của bạn')}")
 
