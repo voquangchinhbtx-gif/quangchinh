@@ -3,7 +3,7 @@ import math
 import google.generativeai as genai
 from PIL import Image
 from datetime import datetime
-from database import load_data, save_data, add_plant, delete_plant, add_chat
+from database import load_data, save_data, add_plant, delete_plant, add_chat, get_crop_history, archive_and_delete_plant
 from weather import get_weather
 from streamlit_js_eval import get_geolocation
 
@@ -24,7 +24,7 @@ genai.configure(api_key=GENAI_KEY)
 
 FARM_RESOURCES = {
     "Dinh dưỡng": {
-        "Hữu cơ (Ưu tiên)": "Phân gà oai, Đạm cá, Humic Acid, Dịch chuối, Phân trùn quế.",
+        "Hữu cơ (Ưu tiên)": "Phân gà hoai, Đạm cá, Humic Acid, Dịch chuối, Phân trùn quế.",
         "Vô cơ (Bổ sung)":  "NPK 20-20-15, Kali Sunfat."
     },
     "Trị bệnh": {
@@ -43,50 +43,14 @@ FARM_RESOURCES = {
 
 CROP_KNOWLEDGE = {
     "Ớt Aji Charapita": [
-        {
-            "stage":   "Cây con",
-            "days":    (0, 20),
-            "organic": "Tưới Humic + Trichoderma để kích rễ.",
-            "backup":  "Nếu cây héo rũ, dùng Metalaxyl tưới gốc.",
-            "note":    "Phủ gốc bằng xơ dừa để giữ ẩm."
-        },
-        {
-            "stage":   "Phát triển lá",
-            "days":    (21, 60),
-            "organic": "Phun đạm cá + dịch tỏi ớt ngừa sâu.",
-            "backup":  "Nếu bọ trĩ bùng phát, dùng Abamectin liều nhẹ.",
-            "note":    "Bấm ngọn để cây phân cành."
-        },
-        {
-            "stage":   "Ra hoa / Trái",
-            "days":    (61, 150),
-            "organic": "Bón phân trùn quế + dịch chuối.",
-            "backup":  "Nếu rụng hoa, bổ sung Canxi-Bo.",
-            "note":    "Không tưới đẫm buổi tối."
-        }
+        {"stage": "Cây con",       "days": (0,20),   "organic": "Tưới Humic + Trichoderma để kích rễ.",     "backup": "Nếu cây héo rũ, dùng Metalaxyl tưới gốc.",        "note": "Phủ gốc bằng xơ dừa để giữ ẩm."},
+        {"stage": "Phát triển lá", "days": (21,60),  "organic": "Phun đạm cá + dịch tỏi ớt ngừa sâu.",     "backup": "Nếu bọ trĩ bùng phát, dùng Abamectin liều nhẹ.", "note": "Bấm ngọn để cây phân cành."},
+        {"stage": "Ra hoa / Trái", "days": (61,150), "organic": "Bón phân trùn quế + dịch chuối.",          "backup": "Nếu rụng hoa, bổ sung Canxi-Bo.",                 "note": "Không tưới đẫm buổi tối."}
     ],
     "Chung": [
-        {
-            "stage":   "Cây non",
-            "days":    (0, 30),
-            "organic": "Tưới Humic + Trichoderma kích rễ.",
-            "backup":  "Nếu héo rũ dùng Metalaxyl nhẹ.",
-            "note":    "Giữ ẩm đất, tránh nắng gắt."
-        },
-        {
-            "stage":   "Sinh trưởng",
-            "days":    (31, 90),
-            "organic": "Bón phân hữu cơ hoai + đạm cá.",
-            "backup":  "Nếu sâu ăn lá dùng BT.",
-            "note":    "Theo dõi côn trùng định kỳ."
-        },
-        {
-            "stage":   "Ra hoa / kết trái",
-            "days":    (91, 200),
-            "organic": "Bổ sung Kali + dịch chuối.",
-            "backup":  "Nếu rụng hoa bổ sung Canxi-Bo.",
-            "note":    "Không tưới quá nhiều nước."
-        }
+        {"stage": "Cây non",           "days": (0,30),   "organic": "Tưới Humic + Trichoderma kích rễ.",   "backup": "Nếu héo rũ dùng Metalaxyl nhẹ.",   "note": "Giữ ẩm đất, tránh nắng gắt."},
+        {"stage": "Sinh trưởng",       "days": (31,90),  "organic": "Bón phân hữu cơ hoai + đạm cá.",     "backup": "Nếu sâu ăn lá dùng BT.",           "note": "Theo dõi côn trùng định kỳ."},
+        {"stage": "Ra hoa / kết trái", "days": (91,200), "organic": "Bổ sung Kali + dịch chuối.",          "backup": "Nếu rụng hoa bổ sung Canxi-Bo.",   "note": "Không tưới quá nhiều nước."}
     ]
 }
 
@@ -103,11 +67,11 @@ def ai_crop_warning(stage, weather):
     if hum > 85:
         return "🦠 Độ ẩm cao → nguy cơ nấm bệnh. Khuyến nghị: Trichoderma hoặc Nano Bạc."
     if temp > 32 and hum < 50:
-        return "🌵 Trời nóng khô → Nguy cơ bùng phát Bọ trĩ & Nhện đỏ. Khuyến nghị: Phun nước mát lên lá và dùng dịch tỏi ớt."
+        return "🌵 Trời nóng khô → Nguy cơ bùng phát Bọ trĩ & Nhện đỏ."
     if temp > 34:
         return "🔥 Nhiệt độ cao → cây dễ sốc nhiệt. Nên tăng tưới và che nắng."
     if stage == "Phát triển lá" and rain > 0:
-        return "🐛 Sau mưa cây ra chồi non → Dễ bị sâu khoang, sâu xanh tấn công. Hãy kiểm tra mặt dưới lá."
+        return "🐛 Sau mưa cây ra chồi non → Dễ bị sâu khoang tấn công."
     if rain > 5:
         return "🌧 Mưa nhiều → nguy cơ thối rễ. Nên rải vôi và kiểm tra thoát nước."
     if stage == "Ra hoa / Trái" and hum > 80:
@@ -130,17 +94,28 @@ def calculate_vpd(temp, humidity):
 def safe_weather_str(w):
     if not w:
         return "N/A"
-    return f"{w.get('temp', '?')}°C, {w.get('hum', '?')}% ẩm"
+    return f"{w.get('temp','?')}°C, {w.get('hum','?')}% ẩm"
+
+def build_season_context(history):
+    if not history:
+        return "Chưa có dữ liệu vụ trước."
+    lines = []
+    for i, s in enumerate(history[-3:], 1):
+        lines.append(f"--- Vụ {i} ({s.get('date_start','')} → {s.get('date_end','')}) ---")
+        logs = s.get("logs", [])
+        if logs:
+            log_texts = [f"{l.get('d', l.get('date',''))}: {l.get('c', l.get('content',''))}" for l in logs[-10:]]
+            lines.append("Nhật ký: " + " | ".join(log_texts))
+        recipe = s.get("recipe", "")
+        if recipe:
+            lines.append(f"Quy trình AI vụ đó: {recipe[:300]}...")
+    return "\n".join(lines)
 
 # =========================
 # STREAMLIT CONFIG
 # =========================
 
-st.set_page_config(
-    page_title="Aji Farm Pro",
-    layout="wide",
-    page_icon="🌶️"
-)
+st.set_page_config(page_title="Aji Farm Pro", layout="wide", page_icon="🌶️")
 
 # =========================
 # 📍 LẤY GPS TỪ TRÌNH DUYỆT
@@ -155,7 +130,6 @@ if "gps_lat" not in st.session_state:
 if st.session_state["gps_lat"] is None:
     with st.spinner("📍 Đang xác định vị trí... (Vui lòng cho phép truy cập vị trí)"):
         loc = get_geolocation()
-
     if loc and isinstance(loc, dict) and "coords" in loc:
         try:
             st.session_state["gps_lat"] = float(loc["coords"]["latitude"])
@@ -176,10 +150,7 @@ def fetch_weather_data(lat, lon):
     return get_weather(lat=lat, lon=lon)
 
 data    = load_data()
-weather = fetch_weather_data(
-    st.session_state["gps_lat"],
-    st.session_state["gps_lon"]
-)
+weather = fetch_weather_data(st.session_state["gps_lat"], st.session_state["gps_lon"])
 
 # =========================
 # SIDEBAR
@@ -189,15 +160,12 @@ with st.sidebar:
     st.title("🌶️ Aji Farm AI")
     if weather:
         st.caption(f"📍 {weather.get('city', 'Vị trí của bạn')}")
-    menu = st.radio(
-        "Menu",
-        [
-            "📊 Dashboard Chuyên sâu",
-            "🌱 Quản lý Cây trồng",
-            "📸 Camera Chẩn đoán",
-            "💬 AI Assistant"
-        ]
-    )
+    menu = st.radio("Menu", [
+        "📊 Dashboard Chuyên sâu",
+        "🌱 Quản lý Cây trồng",
+        "📸 Camera Chẩn đoán",
+        "💬 AI Assistant"
+    ])
 
 # =========================
 # DASHBOARD
@@ -205,27 +173,22 @@ with st.sidebar:
 
 if menu == "📊 Dashboard Chuyên sâu":
     st.title("📊 Quan trắc VPD & Thời tiết")
-
     if weather:
         city = weather.get("city", "Vị trí của bạn")
         st.markdown(f"📍 **{city}**")
-
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Nhiệt độ",  f"{weather['temp']}°C")
         c2.metric("Độ ẩm",     f"{weather['hum']}%")
         c3.metric("Mưa",       f"{weather['rain']}mm")
         c4.metric("Thời tiết", weather['desc'].capitalize())
-
         vpd = calculate_vpd(weather['temp'], weather['hum'])
         st.markdown(f"### Chỉ số VPD: `{vpd:.2f} kPa`")
-
         if vpd < 0.5:
             st.error("Nguy cơ nấm bệnh cao")
         elif vpd > 2:
             st.warning("Không khí khô")
         else:
             st.success("Điều kiện sinh trưởng tốt")
-
         warnings = weather.get("agri_warnings", [])
         if warnings:
             st.markdown("### 🚨 Cảnh báo Nông nghiệp")
@@ -247,20 +210,10 @@ elif menu == "🌱 Quản lý Cây trồng":
         with tab_add:
             c1, c2 = st.columns(2)
             with c1:
-                name_in = st.text_input(
-                    "Tên định danh cây",
-                    placeholder="Ví dụ: Ớt Aji - Lứa 01",
-                    key="add_name"
-                )
+                name_in = st.text_input("Tên định danh cây", placeholder="Ví dụ: Ớt Aji - Lứa 01", key="add_name")
             with c2:
-                type_in = st.text_input(
-                    "Loại cây cụ thể",
-                    placeholder="Ví dụ: Ớt Aji Charapita",
-                    key="add_type"
-                )
-
+                type_in = st.text_input("Loại cây cụ thể", placeholder="Ví dụ: Ớt Aji Charapita", key="add_type")
             date_in = st.date_input("Ngày trồng thực tế", value=datetime.now(), key="add_date")
-
             if st.button("🚀 Khởi tạo vườn", key="btn_init_farm"):
                 if name_in.strip() and type_in.strip():
                     full_id = f"{name_in} | {type_in}"
@@ -274,21 +227,13 @@ elif menu == "🌱 Quản lý Cây trồng":
         with tab_edit:
             all_p = data.get("plants", [])
             if all_p:
-                p_edit = st.selectbox(
-                    "Chọn cây muốn sửa",
-                    all_p,
-                    format_func=lambda x: x["name"],
-                    key="sb_edit"
-                )
-                new_n = st.text_input("Sửa tên định danh", value=p_edit["name"], key="edit_name")
-
+                p_edit = st.selectbox("Chọn cây muốn sửa", all_p, format_func=lambda x: x["name"], key="sb_edit")
+                new_n  = st.text_input("Sửa tên định danh", value=p_edit["name"], key="edit_name")
                 try:
                     edit_date_val = datetime.strptime(p_edit["date"], "%Y-%m-%d")
                 except (ValueError, KeyError):
                     edit_date_val = datetime.now()
-
                 new_d = st.date_input("Sửa ngày trồng", value=edit_date_val, key="edit_date")
-
                 if st.button("💾 Lưu cập nhật", key="btn_update"):
                     for p in data["plants"]:
                         if p["id"] == p_edit["id"]:
@@ -311,12 +256,10 @@ elif menu == "🌱 Quản lý Cây trồng":
 
                 with col_info:
                     st.subheader(f"🌿 {p['name']}")
-
                     try:
                         plant_date = datetime.strptime(p["date"], "%Y-%m-%d")
                     except (ValueError, KeyError):
                         plant_date = datetime.now()
-
                     age = max((datetime.now() - plant_date).days, 0)
                     st.write(f"⏱️ **{age} ngày tuổi**")
                     st.divider()
@@ -340,7 +283,6 @@ elif menu == "🌱 Quản lý Cây trồng":
                                 st.rerun()
                             else:
                                 st.warning("Nhật ký không được để trống.")
-
                         st.write("---")
                         recent_logs = list(reversed(p.get("logs", [])))[:3]
                         if recent_logs:
@@ -352,22 +294,39 @@ elif menu == "🌱 Quản lý Cây trồng":
                 with col_care:
                     parts     = p["name"].split("|", 1)
                     crop_type = parts[1].strip() if len(parts) > 1 else parts[0].strip()
-
                     st.markdown(f"📋 **Phác đồ tối ưu AI cho: {crop_type}**")
 
                     if st.button("🧠 AI: Tối ưu 15 ngày tới", key=f"btn_opt_{p['id']}"):
-                        with st.spinner("Đang phân tích nhật ký & dữ liệu mở..."):
+                        with st.spinner("Đang tổng hợp lịch sử & phân tích chuyên sâu..."):
                             try:
-                                model   = genai.GenerativeModel("gemini-1.5-flash")
-                                history = " | ".join([l["c"] for l in p.get("logs", [])])
-                                w_info  = safe_weather_str(weather)
+                                model        = genai.GenerativeModel("gemini-1.5-flash")
+                                w_info       = safe_weather_str(weather)
+                                current_logs = " | ".join([l["c"] for l in p.get("logs", [])])
+                                past_seasons = get_crop_history(data, crop_type)
+                                season_ctx   = build_season_context(past_seasons)
+                                season_count = len(past_seasons)
 
                                 prompt = f"""
-Bạn là chuyên gia nông nghiệp hữu cơ thực chiến. Trả lời BẰNG TIẾNG VIỆT.
-Thông tin cây: {crop_type}, {age} ngày tuổi. Thời tiết hiện tại: {w_info}.
-Nhật ký thực tế: {history if history else "Chưa có dữ liệu"}.
+Bạn là chuyên gia nông nghiệp hữu cơ cấp cao với khả năng học hỏi từ dữ liệu thực địa.
+Trả lời BẰNG TIẾNG VIỆT.
 
-NHIỆM VỤ: Lập quy trình chăm sóc 15 ngày tới, trình bày theo đúng format sau:
+=== THÔNG TIN CÂY HIỆN TẠI ===
+- Loại cây: {crop_type}
+- Tuổi cây: {age} ngày
+- Thời tiết: {w_info}
+- Nhật ký vụ này: {current_logs if current_logs else "Chưa có dữ liệu"}
+
+=== DỮ LIỆU HỌC MÁY TỪ {season_count} VỤ TRƯỚC ===
+{season_ctx}
+
+=== NHIỆM VỤ ===
+Dựa trên DỮ LIỆU THỰC ĐỊA từ các vụ trước (lỗi đã gặp, bệnh đã xử lý, quy trình hiệu quả),
+kết hợp tình trạng vụ hiện tại và thời tiết, hãy lập quy trình chăm sóc 15 ngày tới:
+
+### 📊 PHÂN TÍCH HỌC TỪ VỤ TRƯỚC
+- [Những gì đã hiệu quả cần phát huy]
+- [Những lỗi/bệnh đã gặp cần phòng tránh chủ động]
+- [Điều chỉnh so với quy trình các vụ trước]
 
 ### 🌿 DINH DƯỠNG
 - Ưu tiên phân hữu cơ: [tên, liều lượng, tần suất]
@@ -377,8 +336,8 @@ NHIỆM VỤ: Lập quy trình chăm sóc 15 ngày tới, trình bày theo đún
 - Sinh học ưu tiên: [tên sản phẩm, cách dùng]
 - Hóa học dự phòng (nếu bùng phát): [tên, liều lượng]
 
-### 🔧 ĐIỀU CHỈNH TỪ NHẬT KÝ
-- [Phân tích lỗi chăm sóc nếu có, hoặc ghi "Không có vấn đề cần điều chỉnh"]
+### 🔧 ĐIỀU CHỈNH TỪ NHẬT KÝ VỤ NÀY
+- [Phân tích lỗi chăm sóc nếu có, hoặc "Không có vấn đề cần điều chỉnh"]
 
 ### 📅 LỊCH 15 NGÀY
 | Ngày  | Việc cần làm |
@@ -387,7 +346,7 @@ NHIỆM VỤ: Lập quy trình chăm sóc 15 ngày tới, trình bày theo đún
 | 6-10  | ... |
 | 11-15 | ... |
 
-Giữ ngắn gọn, thực tế, tránh lý thuyết chung chung.
+Ngắn gọn, thực tế, ưu tiên phòng ngừa dựa trên kinh nghiệm thực địa đã tích lũy.
 """
                                 res         = model.generate_content(prompt)
                                 recipe_text = getattr(res, "text", None)
@@ -402,10 +361,7 @@ Giữ ngắn gọn, thực tế, tránh lý thuyết chung chung.
                             except Exception as e:
                                 st.error(f"Lỗi kết nối AI: {e}")
 
-                    plan_display = st.session_state.get(
-                        f"st_view_{p['id']}",
-                        p.get("optimized_recipe")
-                    )
+                    plan_display = st.session_state.get(f"st_view_{p['id']}", p.get("optimized_recipe"))
                     if plan_display:
                         with st.expander("📍 XEM QUY TRÌNH ĐÃ LƯU", expanded=True):
                             st.markdown(plan_display)
@@ -414,12 +370,11 @@ Giữ ngắn gọn, thực tế, tránh lý thuyết chung chung.
 
                 with col_action:
                     st.caption("⚙️ Thao tác")
-
                     with st.popover("🗑️ Kết thúc vụ"):
-                        st.warning(f"Xác nhận gỡ **{p['name']}** khỏi vườn?")
-                        if st.button("✔️ Xác nhận xoá", key=f"btn_del_{p['id']}", type="primary"):
-                            data = delete_plant(data, p["id"])
-                            save_data(data)
+                        st.warning(f"Kết thúc vụ **{p['name']}**?")
+                        st.caption("Nhật ký & quy trình sẽ được lưu lại để AI học cho vụ sau.")
+                        if st.button("✔️ Xác nhận", key=f"btn_del_{p['id']}", type="primary"):
+                            data = archive_and_delete_plant(data, p["id"])
                             st.rerun()
 
                     if weather:
@@ -448,12 +403,7 @@ elif menu == "📸 Camera Chẩn đoán":
     selected_p  = None
 
     if plants_list:
-        selected_p = st.selectbox(
-            "Chọn cây cần chẩn đoán:",
-            plants_list,
-            format_func=lambda x: x["name"],
-            key="sb_cam"
-        )
+        selected_p = st.selectbox("Chọn cây cần chẩn đoán:", plants_list, format_func=lambda x: x["name"], key="sb_cam")
     else:
         st.info("🌵 Chưa có cây nào trong vườn. Hãy thêm cây ở mục Quản lý Cây trồng trước.")
 
@@ -467,7 +417,6 @@ elif menu == "📸 Camera Chẩn đoán":
             with st.spinner("Đang phân lập Vi khuẩn, Virus, Nấm, Sâu bọ..."):
                 try:
                     model = genai.GenerativeModel("gemini-1.5-flash")
-
                     if weather and isinstance(weather, dict):
                         warnings_list = weather.get("agri_warnings", [])
                         w_info = f"""
@@ -496,31 +445,31 @@ Trả lời BẰNG TIẾNG VIỆT theo đúng format:
 
 ### 🦠 TÁC NHÂN CHÍNH
 **Phân loại:** [Nấm / Vi khuẩn / Virus / Sâu bọ / Thiếu dinh dưỡng / Kết hợp]
-**Tên khoa học:** [Bắt buộc nếu xác định được — ví dụ: *Phytophthora infestans*, *Botrytis cinerea*...]
+**Tên khoa học:** [Bắt buộc nếu xác định được]
 **Tên thường gọi:** [Ví dụ: Mốc sương, Thán thư, Héo xanh vi khuẩn...]
-**Bằng chứng visual:** [Mô tả chính xác màu sắc, hình dạng, vị trí vết bệnh trong ảnh]
+**Bằng chứng visual:** [Mô tả chính xác màu sắc, hình dạng, vị trí vết bệnh]
 
 ---
 
 ### 🔬 PHÂN TÍCH SÂU TÁC NHÂN
 
-🍄 **Nếu là Nấm — xác định:**
+🍄 **Nếu là Nấm:**
 - Nhóm nấm: [Oomycete / Ascomycete / Basidiomycete / Deuteromycete]
 - Cơ chế lây lan: [Bào tử khí / Đất / Nước / Tiếp xúc]
 - Điều kiện bùng phát: [Nhiệt độ, độ ẩm thuận lợi]
 - Giai đoạn bệnh: [Sơ nhiễm / Phát triển / Nặng]
 
-🧫 **Nếu là Vi khuẩn — xác định:**
+🧫 **Nếu là Vi khuẩn:**
 - Chi/Loài: [*Xanthomonas* / *Pseudomonas* / *Erwinia* / *Ralstonia*...]
 - Dạng triệu chứng: [Đốm góc cạnh / Thối nhũn / Héo mạch dẫn / Sùi loét]
 - Vector lây truyền: [Nước mưa / Côn trùng / Dụng cụ / Vết thương cơ học]
 
-🧬 **Nếu là Virus — xác định:**
+🧬 **Nếu là Virus:**
 - Họ virus nghi ngờ: [Potyvirus / Tobamovirus / Begomovirus / Cucumovirus...]
 - Triệu chứng điển hình: [Khảm / Xoăn lá / Vàng gân / Còi cọc]
 - Vector chính: [Bọ trĩ / Rệp / Bọ phấn / Tuyến trùng]
 
-🐛 **Nếu là Sâu bọ — xác định:**
+🐛 **Nếu là Sâu bọ:**
 - Bộ/Loài: [Tên khoa học + tên thường gọi]
 - Kiểu gây hại: [Chích hút / Gặm nhấm / Đục thân / Cuốn lá]
 
@@ -548,9 +497,8 @@ Trả lời BẰNG TIẾNG VIỆT theo đúng format:
 """
                     img_bytes  = img_file.getvalue()
                     image_part = {"mime_type": "image/jpeg", "data": img_bytes}
-
-                    res    = model.generate_content([prompt, image_part])
-                    result = getattr(res, "text", None)
+                    res        = model.generate_content([prompt, image_part])
+                    result     = getattr(res, "text", None)
 
                     if result:
                         st.session_state["last_diagnosis"] = {
@@ -565,18 +513,15 @@ Trả lời BẰNG TIẾNG VIỆT theo đúng format:
                     st.info("Kiểm tra lại kết nối mạng hoặc API Key Gemini.")
 
         diag = st.session_state.get("last_diagnosis")
-
         if diag:
             st.markdown("---")
             st.subheader("🔬 Kết quả chẩn đoán")
             st.markdown(diag["result"])
-
             if selected_p:
                 if st.button("📥 Lưu chẩn đoán vào Nhật ký cây", key="btn_save_diag"):
                     summary = diag["result"]
                     if len(summary) > 120:
                         summary = summary[:120].rsplit(" ", 1)[0] + "..."
-
                     for plant in data["plants"]:
                         if plant["id"] == selected_p["id"]:
                             if "logs" not in plant:
@@ -586,7 +531,6 @@ Trả lời BẰNG TIẾNG VIỆT theo đúng format:
                                 "c": f"🩺 AI Chẩn đoán: {summary}"
                             })
                             break
-
                     save_data(data)
                     del st.session_state["last_diagnosis"]
                     st.success(f"Đã lưu chẩn đoán vào nhật ký **{selected_p['name']}**!")
@@ -635,9 +579,8 @@ Yêu cầu:
 """
                 response = model.generate_content(full_prompt)
                 ai_res   = (
-                    response.text
-                    if hasattr(response, "text")
-                    else "⚠️ AI không thể trả lời câu hỏi này. Vui lòng hỏi về kỹ thuật nông nghiệp."
+                    response.text if hasattr(response, "text")
+                    else "⚠️ AI không thể trả lời câu hỏi này."
                 )
 
                 with st.chat_message("assistant"):
