@@ -866,7 +866,6 @@ Yêu cầu:
 - Trả lời bằng tiếng Việt.
 - Tập trung giải pháp kỹ thuật, ưu tiên hữu cơ/sinh học.
 - Sử dụng Markdown (###, **, -) để trình bày đẹp mắt.
-- Tuyệt đối không nhắc đến việc soạn giáo án hay giảng dạy.
 """
                 response = model.generate_content(
                     full_prompt,
