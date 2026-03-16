@@ -38,9 +38,6 @@ def add_plant(data, name, date):
         "date":             date,
         "logs":             [],
         "optimized_recipe": None,
-        # Lưu trữ lịch sử các vụ trước
-        # Mỗi vụ: { "season": N, "date_start": ..., "date_end": ...,
-        #            "logs": [...], "diagnoses": [...], "recipe": "..." }
         "seasons":          []
     }
     data["plants"].append(plant)
@@ -49,57 +46,43 @@ def add_plant(data, name, date):
 
 # =========================
 # ARCHIVE & DELETE PLANT
-# Khi "Kết thúc vụ": lưu toàn bộ nhật ký/quy trình vào seasons
-# rồi xoá cây khỏi danh sách active
 # =========================
 def archive_and_delete_plant(data, plant_id):
-    """
-    Lưu vụ hiện tại vào một bảng seasons riêng (crop_history)
-    trước khi xoá cây khỏi danh sách active.
-    """
     target = next((p for p in data["plants"] if p["id"] == plant_id), None)
     if not target:
         return data
 
-    # Chuẩn bị bản ghi vụ
     season_record = {
-        "plant_name":   target["name"],
-        "date_start":   target.get("date", ""),
-        "date_end":     datetime.now().strftime("%Y-%m-%d"),
-        "logs":         target.get("logs", []),
-        "recipe":       target.get("optimized_recipe", ""),
-        "seasons":      target.get("seasons", [])
+        "plant_name": target["name"],
+        "date_start": target.get("date", ""),
+        "date_end":   datetime.now().strftime("%Y-%m-%d"),
+        "logs":       target.get("logs", []),
+        "recipe":     target.get("optimized_recipe", ""),
+        "seasons":    target.get("seasons", [])
     }
 
-    # Lưu vào crop_history (theo tên loại cây để tra cứu sau)
     if "crop_history" not in data:
         data["crop_history"] = []
     data["crop_history"].append(season_record)
 
-    # Xoá khỏi active
     data["plants"] = [p for p in data["plants"] if p["id"] != plant_id]
     save_data(data)
     return data
 
 # =========================
-# DELETE PLANT (giữ lại để tương thích)
+# DELETE PLANT (tương thích ngược)
 # =========================
 def delete_plant(data, plant_id):
     return archive_and_delete_plant(data, plant_id)
 
 # =========================
 # GET CROP HISTORY
-# Lấy toàn bộ lịch sử các vụ của một loại cây
 # =========================
 def get_crop_history(data, crop_type):
-    """
-    Trả về list các vụ đã kết thúc của cùng loại cây (so khớp tên).
-    """
     history = data.get("crop_history", [])
     matched = []
     for record in history:
         name = record.get("plant_name", "")
-        # So khớp nếu crop_type xuất hiện trong tên
         if crop_type.lower() in name.lower():
             matched.append(record)
     return matched
