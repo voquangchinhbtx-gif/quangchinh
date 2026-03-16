@@ -52,7 +52,26 @@ CROP_KNOWLEDGE = {
         {"stage": "Ra hoa / kết trái", "days": (91,200), "organic": "Bổ sung Kali + dịch chuối.",          "backup": "Nếu rụng hoa bổ sung Canxi-Bo.",   "note": "Không tưới quá nhiều nước."}
     ]
 }
+# =========================
+# DANH SÁCH CÂY TRỒNG
+# =========================
 
+CROP_LIST = [
+    "Ớt Aji Charapita",
+    "Ớt Hiểm",
+    "Ớt Chuông",
+    "Cà chua Cherry",
+    "Cà chua Beef",
+    "Dưa leo",
+    "Dưa lưới",
+    "Cà tím",
+    "Bắp cải",
+    "Xà lách",
+    "Rau muống",
+    "Húng quế",
+    "Cần tây",
+    "Khác (nhập tay)"
+]
 # =========================
 # AI CẢNH BÁO
 # =========================
