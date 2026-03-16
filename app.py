@@ -169,20 +169,14 @@ if st.session_state["gps_lat"] is None:
 # LẤY THỜI TIẾT (CACHE)
 # =========================
 
-loc = get_geolocation()
+from weather import get_weather
 
-if loc and isinstance(loc, dict) and "coords" in loc:
-    try:
-        st.session_state["gps_lat"] = float(loc["coords"]["latitude"])
-        st.session_state["gps_lon"] = float(loc["coords"]["longitude"])
-    except (KeyError, ValueError, TypeError):
-        if st.session_state["gps_lat"] is None:
-            st.session_state["gps_lat"] = DEFAULT_LAT
-            st.session_state["gps_lon"] = DEFAULT_LON
-else:
-    if st.session_state["gps_lat"] is None:
-        st.session_state["gps_lat"] = DEFAULT_LAT
-        st.session_state["gps_lon"] = DEFAULT_LON
+@st.cache_data(ttl=600)
+def fetch_weather_data(lat, lon):
+    return get_weather(lat=lat, lon=lon)
+
+data    = load_data()
+weather = fetch_weather_data(st.session_state["gps_lat"], st.session_state["gps_lon"])
 
 # =========================
 # SIDEBAR
