@@ -226,7 +226,7 @@ if menu == "📊 Dashboard Chuyên sâu":
     back_button()
     st.title("📊 Quan trắc VPD & Thời tiết")
     if weather:
-        city = weather.get("city",get_city_name(lat, lon))
+        city = weather.get("city","Vị trí của bạn")
         st.markdown(f"📍 **{city}**")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Nhiệt độ",  f"{weather['temp']}°C")
