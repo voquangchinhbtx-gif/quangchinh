@@ -60,19 +60,20 @@ CROP_KNOWLEDGE = {
 
 CROP_LIST = [
     "Ớt Aji Charapita",
-    "Ớt Hiểm",
-    "Ớt Chuông",
-    "Cà chua Cherry",
+    "Ớt Chỉ thiên",
+    "Ớt Xiêm",
+    "Bầu",
+    "Mai vàng",
     "Cà chua Beef",
     "Dưa leo",
-    "Dưa lưới",
+    "Chanh",
     "Cà tím",
     "Bắp cải",
     "Xà lách",
     "Rau muống",
     "Húng quế",
     "Cần tây",
-    "Khác (nhập tay)"
+    "Khác"
 ]
 
 # =========================
