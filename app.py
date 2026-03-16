@@ -359,7 +359,7 @@ elif menu == "🌱 Quản lý Cây trồng":
                     if st.button("🧠 AI: Tối ưu 15 ngày tới", key=f"btn_opt_{p['id']}"):
                         with st.spinner("Đang tổng hợp lịch sử & phân tích chuyên sâu..."):
                             try:
-                                model        = genai.GenerativeModel("gemini-1.5-flash")
+                                model        = genai.GenerativeModel("gemini-2.0-flash")
                                 w_info       = safe_weather_str(weather)
                                 current_logs = " | ".join([l["c"] for l in p.get("logs", [])])
                                 past_seasons = get_crop_history(data, crop_type)
