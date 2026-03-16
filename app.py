@@ -5,6 +5,7 @@ from PIL import Image
 from datetime import datetime
 from database import load_data, save_data, add_plant, delete_plant, add_chat
 from weather import get_weather
+from streamlit_js_eval import get_geolocation
 
 # =========================
 # CẤU HÌNH
@@ -99,7 +100,6 @@ def ai_crop_warning(stage, weather):
     temp = weather["temp"]
     hum  = weather["hum"]
     rain = weather["rain"]
-
     if hum > 85:
         return "🦠 Độ ẩm cao → nguy cơ nấm bệnh. Khuyến nghị: Trichoderma hoặc Nano Bạc."
     if temp > 32 and hum < 50:
@@ -144,67 +144,31 @@ st.set_page_config(
 
 # =========================
 # 📍 LẤY GPS TỪ TRÌNH DUYỆT
-# Inject JS một lần duy nhất khi app khởi động,
-# tọa độ được truyền vào qua query params rồi lưu session_state
 # =========================
+
+DEFAULT_LAT, DEFAULT_LON = 16.4637, 107.5909
 
 if "gps_lat" not in st.session_state:
     st.session_state["gps_lat"] = None
     st.session_state["gps_lon"] = None
-    st.session_state["gps_done"] = False
 
-# Đọc query params nếu JS đã gửi tọa độ về
-qp = st.query_params
-if "lat" in qp and "lon" in qp and not st.session_state["gps_done"]:
-    try:
-        st.session_state["gps_lat"]  = float(qp["lat"])
-        st.session_state["gps_lon"]  = float(qp["lon"])
-        st.session_state["gps_done"] = True
-        # Xoá query params khỏi URL cho gọn
-        st.query_params.clear()
-    except (ValueError, TypeError):
-        st.session_state["gps_done"] = True
+if st.session_state["gps_lat"] is None:
+    with st.spinner("📍 Đang xác định vị trí... (Vui lòng cho phép truy cập vị trí)"):
+        loc = get_geolocation()
 
-# Inject JS xin quyền GPS — chỉ chạy khi chưa có tọa độ
-if not st.session_state["gps_done"]:
-    st.components.v1.html(
-        """
-        <script>
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                function(pos) {
-                    const lat = pos.coords.latitude.toFixed(6);
-                    const lon = pos.coords.longitude.toFixed(6);
-                    // Gửi tọa độ vào URL để Streamlit đọc
-                    const url = new URL(window.parent.location.href);
-                    url.searchParams.set('lat', lat);
-                    url.searchParams.set('lon', lon);
-                    window.parent.location.href = url.toString();
-                },
-                function(err) {
-                    // Người dùng từ chối hoặc lỗi — đánh dấu done để không hỏi lại
-                    const url = new URL(window.parent.location.href);
-                    url.searchParams.set('lat', '16.4637');
-                    url.searchParams.set('lon', '107.5909');
-                    window.parent.location.href = url.toString();
-                },
-                { timeout: 8000, maximumAge: 300000 }
-            );
-        } else {
-            const url = new URL(window.parent.location.href);
-            url.searchParams.set('lat', '16.4637');
-            url.searchParams.set('lon', '107.5909');
-            window.parent.location.href = url.toString();
-        }
-        </script>
-        <p style="color: gray; font-size: 13px;">📍 Đang xác định vị trí...</p>
-        """,
-        height=40,
-    )
-    st.stop()  # Dừng render cho đến khi có tọa độ
+    if loc and isinstance(loc, dict) and "coords" in loc:
+        try:
+            st.session_state["gps_lat"] = float(loc["coords"]["latitude"])
+            st.session_state["gps_lon"] = float(loc["coords"]["longitude"])
+        except (KeyError, ValueError, TypeError):
+            st.session_state["gps_lat"] = DEFAULT_LAT
+            st.session_state["gps_lon"] = DEFAULT_LON
+    else:
+        st.session_state["gps_lat"] = DEFAULT_LAT
+        st.session_state["gps_lon"] = DEFAULT_LON
 
 # =========================
-# LẤY THỜI TIẾT (CACHE theo tọa độ)
+# LẤY THỜI TIẾT (CACHE)
 # =========================
 
 @st.cache_data(ttl=600)
@@ -223,12 +187,8 @@ weather = fetch_weather_data(
 
 with st.sidebar:
     st.title("🌶️ Aji Farm AI")
-
-    # Hiển thị vị trí đang dùng
     if weather:
-        city = weather.get("city", "Vị trí của bạn")
-        st.caption(f"📍 {city}")
-
+        st.caption(f"📍 {weather.get('city', 'Vị trí của bạn')}")
     menu = st.radio(
         "Menu",
         [
@@ -248,7 +208,7 @@ if menu == "📊 Dashboard Chuyên sâu":
 
     if weather:
         city = weather.get("city", "Vị trí của bạn")
-        st.markdown(f"📍 **{city}** — {weather.get('lat', '')}°N, {weather.get('lon', '')}°E")
+        st.markdown(f"📍 **{city}**")
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Nhiệt độ",  f"{weather['temp']}°C")
@@ -266,7 +226,6 @@ if menu == "📊 Dashboard Chuyên sâu":
         else:
             st.success("Điều kiện sinh trưởng tốt")
 
-        # Cảnh báo nông nghiệp
         warnings = weather.get("agri_warnings", [])
         if warnings:
             st.markdown("### 🚨 Cảnh báo Nông nghiệp")
@@ -282,9 +241,6 @@ if menu == "📊 Dashboard Chuyên sâu":
 elif menu == "🌱 Quản lý Cây trồng":
     st.title("🌱 Quản lý Vườn & Hệ thống Tối ưu AI")
 
-    # ------------------------------------------------------------------ #
-    # 1. KHUNG QUẢN TRỊ: THÊM & SỬA
-    # ------------------------------------------------------------------ #
     with st.expander("⚙️ Thiết lập & Quản lý danh sách cây", expanded=False):
         tab_add, tab_edit = st.tabs(["➕ Thêm cây mới", "✏️ Chỉnh sửa thông tin"])
 
@@ -344,9 +300,6 @@ elif menu == "🌱 Quản lý Cây trồng":
             else:
                 st.info("Chưa có cây nào để sửa.")
 
-    # ------------------------------------------------------------------ #
-    # 2. DANH SÁCH CÂY & QUY TRÌNH TỐI ƯU
-    # ------------------------------------------------------------------ #
     plants_list = data.get("plants", [])
 
     if not plants_list:
@@ -646,14 +599,12 @@ Trả lời BẰNG TIẾNG VIỆT theo đúng format:
 elif menu == "💬 AI Assistant":
     st.title("💬 Trợ lý Kỹ thuật")
 
-    # Hiển thị thời tiết thực tế — weather luôn có giá trị
     city     = weather.get("city", "Vị trí của bạn")
     temp_now = weather.get("temp", "?")
     hum_now  = weather.get("hum",  "?")
     desc_now = weather.get("desc", "")
     st.caption(f"📍 {city}: {temp_now}°C — {hum_now}% ẩm — {desc_now}")
 
-    # LỊCH SỬ CHAT
     chat_container = st.container()
     with chat_container:
         for chat in data.get("chat_history", []):
@@ -662,7 +613,6 @@ elif menu == "💬 AI Assistant":
             with st.chat_message("assistant"):
                 st.markdown(chat["ai"])
 
-    # NHẬP LIỆU
     if prompt := st.chat_input("Hỏi AI về kỹ thuật vườn, phân bón, sâu bệnh..."):
         with st.chat_message("user"):
             st.write(prompt)
@@ -670,7 +620,6 @@ elif menu == "💬 AI Assistant":
         with st.spinner("🤖 AI đang phân tích dữ liệu..."):
             try:
                 model = genai.GenerativeModel("gemini-1.5-flash")
-
                 w_ctx = f"Nhiệt độ {temp_now}°C, Độ ẩm {hum_now}%, Thời tiết: {desc_now}"
 
                 full_prompt = f"""
