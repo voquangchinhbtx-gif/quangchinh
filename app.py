@@ -226,7 +226,7 @@ if menu == "📊 Dashboard Chuyên sâu":
     back_button()
     st.title("📊 Quan trắc VPD & Thời tiết")
     if weather:
-        city = weather.get("city", "Vị trí của bạn")
+        city = weather.get("city",get_city_name(lat, lon))
         st.markdown(f"📍 **{city}**")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Nhiệt độ",  f"{weather['temp']}°C")
@@ -837,7 +837,7 @@ elif menu == "💬 AI Assistant":
     back_button()
     st.title("💬 Trợ lý Kỹ thuật")
 
-    city     = weather.get("city", "Vị trí của bạn")
+    city     = weather.get("city",get_city_name(lat, lon))
     temp_now = weather.get("temp", "?")
     hum_now  = weather.get("hum",  "?")
     desc_now = weather.get("desc", "")
