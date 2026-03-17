@@ -29,15 +29,15 @@ genai.configure(api_key="YOUR_API_KEY")
 
 FARM_RESOURCES = {
     "Dinh dưỡng": {
-        "Hữu cơ (Ưu tiên)": "Phân gà hoai, Đạm cá, Humic Acid, Dịch chuối, Phân trùn quế.",
-        "Vô cơ (Bổ sung)":  "NPK 20-20-15, Kali Sunfat."
+        "Hữu cơ (Ưu tiên)": "Phân gà hoai, Đạm cá, Humic Acid, Dịch chuối, Phân trùn quế...",
+        "Vô cơ (Bổ sung)":  "NPK 20-20-15, Kali Sunfat..."
     },
     "Trị bệnh": {
-        "Sinh học (Ưu tiên)":      "Trichoderma, Nano Bạc, Tinh dầu thảo mộc, Bordeaux.",
-        "Hóa học (Khi bệnh nặng)": "Metalaxyl, Validamycin."
+        "Sinh học (Ưu tiên)":      "Trichoderma, Nano Bạc, Tinh dầu thảo mộc, Bordeaux...",
+        "Hóa học (Khi bệnh nặng)": "Metalaxyl, Validamycin..."
     },
     "Trị côn trùng": {
-        "Sinh học (Ưu tiên)":      "BT, Dịch tỏi ớt, Nấm xanh Metarhizium.",
+        "Sinh học (Ưu tiên)":      "BT, Dịch tỏi ớt, Nấm xanh Metarhizium...",
         "Hóa học (Khi bùng dịch)": "Abamectin."
     }
 }
