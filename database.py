@@ -4,6 +4,7 @@ from datetime import datetime
 
 DATA_FILE = "data.json"
 
+
 def load_data():
     if not os.path.exists(DATA_FILE):
         data = {"plants": [], "chat_history": []}
@@ -13,9 +14,11 @@ def load_data():
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
+
 def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
 def add_plant(data, name, date, extra=None):
     plants = data.get("plants", [])
@@ -34,6 +37,7 @@ def add_plant(data, name, date, extra=None):
     data["plants"].append(plant)
     save_data(data)
     return data
+
 
 def archive_and_delete_plant(data, plant_id):
     target = next((p for p in data["plants"] if p["id"] == plant_id), None)
@@ -57,12 +61,18 @@ def archive_and_delete_plant(data, plant_id):
     save_data(data)
     return data
 
+
 def delete_plant(data, plant_id):
     return archive_and_delete_plant(data, plant_id)
 
+
 def get_crop_history(data, crop_type):
     history = data.get("crop_history", [])
-    return [r for r in history if crop_type.lower() in r.get("plant_name", "").lower()]
+    return [
+        r for r in history
+        if crop_type.lower() in r.get("plant_name", "").lower()
+    ]
+
 
 def add_chat(data, user_msg, ai_msg):
     if "chat_history" not in data:
@@ -74,6 +84,7 @@ def add_chat(data, user_msg, ai_msg):
     })
     save_data(data)
     return data
+
 
 def add_log(data, plant_id, action_type, content):
     for p in data["plants"]:
@@ -88,6 +99,7 @@ def add_log(data, plant_id, action_type, content):
             break
     save_data(data)
     return data
+
 
 def get_plants(data):
     return data.get("plants", [])
