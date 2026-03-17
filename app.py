@@ -524,7 +524,7 @@ Ngày thu hoạch dự kiến: YYYY-MM-DD
 """
                                 res = model.generate_content(
                                     std_prompt,
-                                    request_options={"timeout": 30}
+                                    request_options={"timeout": 20}
                                 )
                                 std_text = getattr(res, "text", None)
                                 if std_text:
