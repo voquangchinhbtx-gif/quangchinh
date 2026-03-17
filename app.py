@@ -149,8 +149,37 @@ def get_weather_safe():
 # =========================
 # STREAMLIT CONFIG
 # =========================
-
 st.set_page_config(page_title="GREEN FARM", layout="wide", page_icon="🌿")
+
+# =========================
+# XÁC THỰC NGƯỜI DÙNG
+# =========================
+
+def check_password():
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    if not st.session_state["authenticated"]:
+        st.title("🌿 GREEN FARM")
+        st.markdown("### 🔐 Đăng nhập")
+        password = st.text_input("Nhập mật khẩu:", type="password", key="login_pw")
+        if st.button("Đăng nhập"):
+            try:
+                correct_pw = st.secrets["APP_PASSWORD"]
+            except:
+                correct_pw = "greenfarm2024"
+            if password == correct_pw:
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("❌ Mật khẩu không đúng!")
+        st.stop()
+
+check_password()
+
+# =========================
+# 📍 LẤY GPS TỪ TRÌNH DUYỆT
+# =========================
 
 # =========================
 # 📍 LẤY GPS TỪ TRÌNH DUYỆT
