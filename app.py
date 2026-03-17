@@ -14,10 +14,10 @@ from weather import get_weather, get_city_name
 
 try:
     GENAI_KEY = st.secrets["GEMINI_API_KEY"]
-    GEMINI_MODEL = st.secrets.get("GEMINI_MODEL", "gemini-1.5-flash-latest")
+    GEMINI_MODEL = st.secrets.get("GEMINI_MODEL", "gemini-1.5-flash")
 except:
     GENAI_KEY = ""
-    GEMINI_MODEL = "gemini-1.5-flash-latest"
+    GEMINI_MODEL = "gemini-1.5-flash"
 
 genai.configure(api_key=GENAI_KEY)
 
