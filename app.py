@@ -1390,7 +1390,7 @@ Yêu cầu khi trả lời:
 - Ưu tiên giải pháp hữu cơ/sinh học, chỉ đề xuất hóa học khi thực sự cần.
 - Có tính đến VPD và áp lực bệnh 48h khi tư vấn tưới tiêu và phòng bệnh.
 - Dùng Markdown (###, **, -) để trình bày rõ ràng.
-"""
+QUAN TRỌNG: Tối đa 300 từ. Đi thẳng vào vấn đề."""
                 response = model.generate_content(
                     full_prompt,
                     request_options={"timeout": 60}
