@@ -30,10 +30,10 @@ from weather import (
 
 try:
     GENAI_KEY    = st.secrets["GEMINI_API_KEY"]
-    GEMINI_MODEL = st.secrets.get("GEMINI_MODEL", "gemini-1.5-flash")
+    GEMINI_MODEL = st.secrets.get("GEMINI_MODEL", "gemini-3.0-flash")
 except (KeyError, FileNotFoundError):
     GENAI_KEY    = ""
-    GEMINI_MODEL = "gemini-1.5-flash"
+    GEMINI_MODEL = "gemini-3.0-flash"
 
 genai.configure(api_key=GENAI_KEY)
 
