@@ -1,6 +1,7 @@
 streamlit
 requests
 pandas
+altair
 Pillow
 google-generativeai>=0.8.3
 streamlit-js-eval
