@@ -733,7 +733,7 @@ elif menu == "🌱 Quản lý Cây trồng":
     if not plants_list:
         st.info("🌵 Vườn chưa có cây. Hãy thêm cây mới ở trên.")
     else:
-        with st.expander("🦠 Áp lực bệnh 7 ngày toàn vườn", expanded=False):
+        with st.expander("🦠 Nguy cơ bệnh 7 ngày toàn vườn", expanded=False):
             render_disease_pressure_7day(lat, lon)
 
         for p in plants_list:
@@ -769,10 +769,13 @@ elif menu == "🌱 Quản lý Cây trồng":
                                 if st.button("✅ Xác nhận",
                                              key=f"btn_upd_seedling_{p['id']}"):
                                     p["date_seedling"] = new_date.strftime("%Y-%m-%d")
-                                    p.pop("standard_recipe", None)
+                                    p.pop("recipe_seed_soak", None)
+                                    p.pop("recipe_seedling", None)
+                                    p.pop("recipe_transplant", None)
                                     p.pop("optimized_recipe", None)
-                                    st.session_state.pop(f"std_view_{p['id']}", None)
-                                    st.session_state.pop(f"st_view_{p['id']}", None)
+                                    for k in list(st.session_state.keys()):
+                                        if str(p['id']) in k and "show_" in k:
+                                            del st.session_state[k]
                                     save_data(data)
                                     st.success("✅ Đã cập nhật! AI sẽ tạo quy trình mới.")
                                     st.rerun()
@@ -783,10 +786,11 @@ elif menu == "🌱 Quản lý Cây trồng":
                                 if st.button("✅ Xác nhận",
                                              key=f"btn_upd_transplant_{p['id']}"):
                                     p["date"] = new_date.strftime("%Y-%m-%d")
-                                    p.pop("standard_recipe", None)
+                                    p.pop("recipe_transplant", None)
                                     p.pop("optimized_recipe", None)
-                                    st.session_state.pop(f"std_view_{p['id']}", None)
-                                    st.session_state.pop(f"st_view_{p['id']}", None)
+                                    for k in list(st.session_state.keys()):
+                                        if str(p['id']) in k and "show_transplant" in k:
+                                            del st.session_state[k]
                                     save_data(data)
                                     st.success("✅ Đã cập nhật! AI sẽ tạo quy trình mới.")
                                     st.rerun()
@@ -819,18 +823,47 @@ elif menu == "🌱 Quản lý Cây trồng":
                 with col_care:
                     parts     = p["name"].split("|", 1)
                     crop_type = parts[1].strip() if len(parts) > 1 else parts[0].strip()
-                    st.markdown(f"📋 **{stage_info['emoji']} Quy trình — {stage_info['label']}**")
+                    st.markdown(f"📋 **Quy trình AI cho: {crop_type}**")
 
-                    # Nut 1: Tao quy trinh theo giai doan
-                    if st.button(f"🌱 Tạo quy trình: {stage_info['label']}",
-                                 key=f"btn_std_{p['id']}"):
-                        with st.spinner("AI đang tạo quy trình..."):
-                            try:
-                                if stage_info["stage"] == "seed_soak":
-                                    stage_prompt = f"""
+                    # ── Nut 1: Tao quy trinh cho TUNG giai doan da co ──
+                    stage_labels = {
+                        "seed_soak":  "🫧 Ủ hạt",
+                        "seedling":   "🌿 Gieo ươm",
+                        "transplant": "🌱 Sau trồng",
+                    }
+
+                    stages_available = []
+                    if p.get("date_seed_soak"):
+                        stages_available.append("seed_soak")
+                    if p.get("date_seedling"):
+                        stages_available.append("seedling")
+                    if p.get("date"):
+                        stages_available.append("transplant")
+
+                    for stage_key in stages_available:
+                        stage_label = stage_labels[stage_key]
+                        recipe_key  = f"recipe_{stage_key}"
+                        view_key    = f"show_{stage_key}_{p['id']}"
+                        has_recipe  = bool(p.get(recipe_key))
+                        is_open     = st.session_state.get(view_key, False)
+
+                        col_t, col_b1, col_b2 = st.columns([3, 1, 1])
+                        with col_t:
+                            st.markdown(f"**📋 {stage_label}**")
+                        with col_b1:
+                            btn_label = ("🔽 Tạo" if not has_recipe
+                                         else ("🔼 Thu" if is_open else "🔽 Xem"))
+                            if st.button(btn_label,
+                                         key=f"btn_toggle_{stage_key}_{p['id']}",
+                                         use_container_width=True):
+                                if not has_recipe:
+                                    with st.spinner(f"AI đang tạo quy trình {stage_label}..."):
+                                        try:
+                                            if stage_key == "seed_soak":
+                                                stage_prompt = """
 ### 🫧 CHĂM SÓC HẠT ĐANG Ủ
 - Nhiệt độ, độ ẩm cần duy trì
-- Dấu hiệu nảy mầm tốt/không tốt
+- Dấu hiệu nảy mầm tốt / không tốt
 - Thời gian nảy mầm dự kiến
 
 ### ⚠️ LỖI THƯỜNG GẶP KHI Ủ HẠT
@@ -839,8 +872,8 @@ elif menu == "🌱 Quản lý Cây trồng":
 Ngày gieo ươm dự kiến: YYYY-MM-DD
 Tối đa 150 từ."""
 
-                                elif stage_info["stage"] == "seedling":
-                                    stage_prompt = f"""
+                                            elif stage_key == "seedling":
+                                                stage_prompt = """
 ### 🌿 CHĂM SÓC CÂY CON ĐANG ƯƠM
 - Ánh sáng, nhiệt độ, tưới nước
 - Phân bón giai đoạn ươm
@@ -851,8 +884,8 @@ Tối đa 150 từ."""
 Ngày trồng xuống đất dự kiến: YYYY-MM-DD
 Tối đa 150 từ."""
 
-                                else:
-                                    stage_prompt = f"""
+                                            else:
+                                                stage_prompt = """
 ### 🌱 CÂY CON (0-30 ngày)
 ### 🌿 PHÁT TRIỂN (30-60 ngày)
 ### 🌸 RA HOA / KẾT TRÁI
@@ -865,66 +898,56 @@ Tối đa 150 từ."""
 Ngày thu hoạch dự kiến: YYYY-MM-DD
 Tối đa 300 từ."""
 
-                                res = model.generate_content(
-                                    f"""Chuyên gia nông nghiệp hữu cơ. Trả lời BẰNG TIẾNG VIỆT, ngắn gọn.
-Cây: {crop_type} | Giai đoạn: {stage_info['label']} ({age} ngày)
-Ủ hạt: {p.get('date_seed_soak','Chưa có')} | Gieo ươm: {p.get('date_seedling','Chưa có')} | Trồng: {p.get('date','Chưa có')}
+                                            res = model.generate_content(
+                                                f"""Chuyên gia nông nghiệp hữu cơ. Trả lời BẰNG TIẾNG VIỆT, ngắn gọn.
+Cây: {crop_type} | Giai đoạn: {stage_label}
+Ủ hạt: {p.get('date_seed_soak','Chưa có')}
+Gieo ươm: {p.get('date_seedling','Chưa có')}
+Trồng: {p.get('date','Chưa có')}
 Thời tiết: {safe_weather_str(weather)}
 
 {stage_prompt}""",
-                                    request_options={"timeout": 60}
-                                )
-                                std_text = getattr(res, "text", None)
-                                if std_text:
-                                    p["standard_recipe"] = std_text
-                                    p["recipe_stage"]    = stage_info["stage"]
-                                    for pattern, field in [
-                                        (r"Ngày thu hoạch dự kiến:\s*(\d{4}-\d{2}-\d{2})", "date_harvest"),
-                                        (r"Ngày trồng xuống đất dự kiến:\s*(\d{4}-\d{2}-\d{2})", "date_transplant_est"),
-                                        (r"Ngày gieo ươm dự kiến:\s*(\d{4}-\d{2}-\d{2})", "date_seedling_est"),
-                                    ]:
-                                        match = re.search(pattern, std_text)
-                                        if match:
-                                            p[field] = match.group(1)
-                                            break
-                                    save_data(data)
-                                    st.session_state[f"std_view_{p['id']}"] = std_text
-                                    st.rerun()
+                                                request_options={"timeout": 60}
+                                            )
+                                            text = getattr(res, "text", None)
+                                            if text:
+                                                p[recipe_key] = text
+                                                for pattern, field in [
+                                                    (r"Ngày thu hoạch dự kiến:\s*(\d{4}-\d{2}-\d{2})",       "date_harvest"),
+                                                    (r"Ngày trồng xuống đất dự kiến:\s*(\d{4}-\d{2}-\d{2})", "date_transplant_est"),
+                                                    (r"Ngày gieo ươm dự kiến:\s*(\d{4}-\d{2}-\d{2})",        "date_seedling_est"),
+                                                ]:
+                                                    match = re.search(pattern, text)
+                                                    if match:
+                                                        p[field] = match.group(1)
+                                                        break
+                                                save_data(data)
+                                                st.session_state[view_key] = True
+                                                st.rerun()
+                                            else:
+                                                st.warning("AI không trả về kết quả.")
+                                        except Exception as e:
+                                            st.error(f"Lỗi AI: {e}")
                                 else:
-                                    st.warning("AI không trả về kết quả.")
-                            except Exception as e:
-                                st.error(f"Lỗi AI: {e}")
+                                    st.session_state[view_key] = not is_open
+                                    st.rerun()
 
-                    std_display = st.session_state.get(
-                        f"std_view_{p['id']}", p.get("standard_recipe"))
-                    if std_display:
-                        recipe_stage  = p.get("recipe_stage", "")
-                        stage_labels  = {
-                            "seed_soak":  "🫧 Ủ hạt",
-                            "seedling":   "🌿 Gieo ươm",
-                            "transplant": "🌱 Sau trồng",
-                        }
-                        if recipe_stage and recipe_stage != stage_info["stage"]:
-                            st.warning(
-                                f"⚠️ Quy trình cho **{stage_labels.get(recipe_stage,'')}** "
-                                f"— cây đã sang **{stage_info['label']}**. Nên tạo lại!"
-                            )
-                        col_t, col_b = st.columns([4, 1])
-                        with col_t:
-                            st.markdown(f"**📋 {stage_labels.get(recipe_stage, stage_info['label'])}**")
-                        with col_b:
-                            key     = f"show_std_{p['id']}"
-                            is_open = st.session_state.get(key, False)
-                            if st.button("🔼 Thu gọn" if is_open else "🔽 Xem",
-                                         key=f"btn_{key}"):
-                                st.session_state[key] = not is_open
-                                st.rerun()
-                        if st.session_state.get(f"show_std_{p['id']}", False):
-                            st.markdown(std_display)
+                        with col_b2:
+                            if has_recipe:
+                                if st.button("🔄", key=f"btn_redo_{stage_key}_{p['id']}",
+                                             help="Tạo lại quy trình",
+                                             use_container_width=True):
+                                    p.pop(recipe_key, None)
+                                    st.session_state.pop(view_key, None)
+                                    save_data(data)
+                                    st.rerun()
+
+                        if has_recipe and st.session_state.get(view_key, False):
+                            st.markdown(p[recipe_key])
 
                     st.divider()
 
-                    # Nut 2: Phan tich hom nay
+                    # ── Nut 2: Phan tich hom nay ──
                     if st.button("🔍 Phân tích hôm nay",
                                  key=f"btn_analyze_{p['id']}"):
                         with st.spinner("AI đang phân tích..."):
@@ -941,7 +964,7 @@ Thời tiết: {safe_weather_str(weather)}
 
 Cây: {crop_type} | {stage_info['label']} ({age} ngày)
 Thời tiết: {safe_weather_str(weather)} | {vpd_info}
-Áp lực bệnh: {dp.get('level','?').upper()} - {dp.get('hours_risk',0)}h nguy hiểm
+Nguy cơ bệnh: {dp.get('level','?').upper()} - {dp.get('hours_risk',0)}h nguy hiểm
 Nhật ký: {current_logs if current_logs else "Chưa có"}
 
 ### ĐÁNH GIÁ NHANH
@@ -985,7 +1008,7 @@ Nhật ký: {current_logs if current_logs else "Chưa có"}
                         with col_b:
                             key     = f"show_analyze_{p['id']}"
                             is_open = st.session_state.get(key, True)
-                            if st.button("🔼 Thu gọn" if is_open else "🔽 Xem",
+                            if st.button("🔼 Thu" if is_open else "🔽 Xem",
                                          key=f"btn_{key}"):
                                 st.session_state[key] = not is_open
                                 st.rerun()
@@ -1014,7 +1037,7 @@ Nhật ký: {current_logs if current_logs else "Chưa có"}
 
                     st.divider()
 
-                    # Nut 3: Toi uu 15 ngay
+                    # ── Nut 3: Toi uu 15 ngay ──
                     if st.button("🧠 Tối ưu 15 ngày tới",
                                  key=f"btn_opt_{p['id']}"):
                         with st.spinner("Đang tổng hợp..."):
@@ -1068,7 +1091,7 @@ Vụ trước: {season_ctx}
                         with col_b:
                             key     = f"show_opt_{p['id']}"
                             is_open = st.session_state.get(key, False)
-                            if st.button("🔼 Thu gọn" if is_open else "🔽 Xem",
+                            if st.button("🔼 Thu" if is_open else "🔽 Xem",
                                          key=f"btn_{key}"):
                                 st.session_state[key] = not is_open
                                 st.rerun()
@@ -1083,7 +1106,6 @@ Vụ trước: {season_ctx}
                 with col_action:
                     st.caption("⚙️ Thao tác")
 
-                    # Ket thuc vu -- luu archive
                     with st.popover("✅ Kết thúc vụ"):
                         st.warning(f"Kết thúc vụ **{p['name']}**?")
                         st.caption("Nhật ký & quy trình lưu lại để AI học vụ sau.")
@@ -1092,7 +1114,6 @@ Vụ trước: {season_ctx}
                             data = archive_and_delete_plant(data, p["id"])
                             st.rerun()
 
-                    # Xoa cay -- 3 ly do
                     with st.popover("🗑️ Xóa cây"):
                         st.error(f"Xóa **{p['name']}**?")
                         reason = st.radio(
