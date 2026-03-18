@@ -784,7 +784,7 @@ Hãy tạo QUY TRÌNH CHUẨN TOÀN VỤ từ ủ hạt đến thu hoạch:
 
 ### 📆 DỰ KIẾN NGÀY THU HOẠCH
 Ngày thu hoạch dự kiến: YYYY-MM-DD""",
-                                    request_options={"timeout": 30}
+                                    request_options={"timeout": 60}
                                 )
                                 std_text = getattr(res, "text", None)
                                 if std_text:
@@ -850,7 +850,7 @@ Cảnh báo: {', '.join(warnings_list) if warnings_list else 'Không có'}
 |------|-------------|-------|
 ### ⚡ HÀNH ĐỘNG NGAY HÔM NAY
 Liệt kê đúng 3 việc quan trọng nhất, mỗi việc 1 dòng.""",
-                                    request_options={"timeout": 30}
+                                    request_options={"timeout": 60}
                                 )
                                 analyze_text = getattr(res, "text", None)
                                 if analyze_text:
@@ -952,7 +952,7 @@ Liệt kê đúng 3 việc quan trọng nhất, mỗi việc 1 dòng.""",
 | 1-5   | ...       | ...         | ...             |
 | 6-10  | ...       | ...         | ...             |
 | 11-15 | ...       | ...         | ...             |""",
-                                    request_options={"timeout": 30}
+                                    request_options={"timeout": 60}
                                 )
                                 recipe_text = getattr(res, "text", None)
                                 if recipe_text:
@@ -1160,7 +1160,7 @@ Tuyệt đối KHÔNG nói "tôi không thể xác định" — hãy đưa ra ch
                     img_part = {"mime_type": "image/jpeg", "data": img_bytes}
                     res      = model.generate_content(
                         [full_prompt, img_part],
-                        request_options={"timeout": 30}
+                        request_options={"timeout": 60}
                     )
                     result = getattr(res, "text", None)
                     if result:
@@ -1391,7 +1391,7 @@ Yêu cầu khi trả lời:
 """
                 response = model.generate_content(
                     full_prompt,
-                    request_options={"timeout": 30}
+                    request_options={"timeout": 60}
                 )
                 ai_res = (
                     response.text if hasattr(response, "text")
