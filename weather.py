@@ -113,9 +113,9 @@ def get_city_name(lat: float, lon: float) -> str:
     return _geocode_cached(round(lat, 2), round(lon, 2))
 
 
-def get_agri_warnings(temp, hum, code: int, wind: float = 0.0) -> list:
-    if temp is None or hum is None:
-        return ["⏳ Đang chờ dữ liệu cảm biến..."]
+def get_agri_warnings(temp, hum, code: int,
+                      wind: float = 0.0,
+                      vpd: float = None) -> list:
 
     warnings = []
     wind = wind or 0.0
@@ -373,7 +373,19 @@ def get_weather(lat=None, lon=None) -> dict:
         print(f"📦 Dữ liệu không hợp lệ: {e}")
     except Exception as e:
         print(f"❌ Lỗi không xác định: {e}")
+if vpd is not None:
+        if vpd < 0.4:
+            warnings.append(
+                f"🌫️ VPD = {vpd:.2f} kPa — Quá ẩm: môi trường lý tưởng "
+                "cho nấm bệnh và thối rễ. Tăng thông gió, kiểm tra thoát nước."
+            )
+        elif vpd > 1.6:
+            warnings.append(
+                f"☀️ VPD = {vpd:.2f} kPa — Stress nước: cây đang thoát hơi "
+                "quá mạnh. Tưới ngay, che nắng buổi 11h-14h."
+            )
 
+    return warnings if warnings else ["✅ Thời tiết hiện tại rất ổn định cho canh tác."]
     return {
         "temp": None, "hum": None, "wind": None, "rain": None,
         "desc": "Dữ liệu dự phòng (offline)",
