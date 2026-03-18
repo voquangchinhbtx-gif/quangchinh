@@ -10,8 +10,8 @@ from functools import lru_cache
 _session = requests.Session()
 _session.headers.update({"User-Agent": "GreenFarm/1.0 (greenfarm@example.com)"})
 
-DEFAULT_LAT  = 16.4637
-DEFAULT_LON  = 107.5909
+DEFAULT_LAT  = 16.45780
+DEFAULT_LON  = 107.56150
 DEFAULT_CITY = "Kim Long, Huế (Mặc định)"
 
 WEATHER_MAP = {
