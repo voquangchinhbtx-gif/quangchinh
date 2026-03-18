@@ -14,6 +14,7 @@ DEFAULT_LON  = 107.5909
 DEFAULT_CITY = "Kim Long, Huế (Mặc định)"
 
 WEATHER_MAP = {
+    -1: "Dữ liệu ngoại tuyến",
     0:  "Trời quang, nắng ráo",  1:  "Phần lớn quang đãng",
     2:  "Mây rải rác",           3:  "Trời nhiều mây",
     45: "Sương mù",              48: "Sương mù đóng băng",
