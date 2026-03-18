@@ -131,6 +131,7 @@ def fmt_date(d: str) -> str:
 
 
 def get_current_stage(p: dict) -> dict:
+    has_transplant = bool(p.get("date") and str(p.get("date","")).strip() != "")
     """Xác định giai đoạn hiện tại dựa trên các mốc thời gian đã có."""
     if p.get("date"):
         try:
@@ -659,20 +660,18 @@ elif menu == "🌱 Quản lý Cây trồng":
                     if not has_seed_soak:
                         st.warning("Vui lòng tick ít nhất 🫧 Đã ủ hạt.")
                     else:
-                        main_date = (
-                            date_transplant or date_seedling or date_seed_soak
-                        ).strftime("%Y-%m-%d")
                         data = add_plant(
-                            data, f"{name_in} | {type_in}",
-                            main_date,
-                            extra={
-                                "date_seed_soak": date_seed_soak.strftime("%Y-%m-%d")
-                                                  if date_seed_soak else None,
-                                "date_seedling":  date_seedling.strftime("%Y-%m-%d")
-                                                  if date_seedling else None,
-                                "date_harvest":   None,
-                            }
-                        )
+    data, f"{name_in} | {type_in}",
+    date_transplant.strftime("%Y-%m-%d") if date_transplant
+    else (date_seed_soak.strftime("%Y-%m-%d") if date_seed_soak else ""),
+    extra={
+        "date_seed_soak": date_seed_soak.strftime("%Y-%m-%d")
+                          if date_seed_soak else None,
+        "date_seedling":  date_seedling.strftime("%Y-%m-%d")
+                          if date_seedling else None,
+        "date_harvest":   None,
+    }
+)
                         save_data(data)
                         st.success(f"Đã thêm **{name_in}**! Nhấn tạo quy trình để AI tư vấn.")
                         st.rerun()
