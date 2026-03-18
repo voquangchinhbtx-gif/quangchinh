@@ -152,40 +152,7 @@ def get_vpd_status(vpd: float) -> dict:
 # REVERSE GEOCODING
 # =============================================================
 
-@lru_cache(maxsize=256)
-def _geocode_cached(lat_r: float, lon_r: float) -> str:
-    try:
-        url = (
-            f"https://nominatim.openstreetmap.org/reverse"
-            f"?lat={lat_r}&lon={lon_r}&format=json&accept-language=vi"
-        )
-        res = _session.get(url, timeout=5)
-        res.raise_for_status()
-        addr = res.json().get("address", {})
-        return (
-            addr.get("city") or addr.get("town") or
-            addr.get("village") or addr.get("county") or
-            "Vị trí của bạn"
-        )
-    except requests.exceptions.RequestException:
-        pass
-    try:
-        url = (
-            f"https://api.open-meteo.com/v1/forecast"
-            f"?latitude={lat_r}&longitude={lon_r}&timezone=auto&forecast_days=0"
-        )
-        res = _session.get(url, timeout=5)
-        res.raise_for_status()
-        tz = res.json().get("timezone", "")
-        if "/" in tz:
-            return tz.split("/")[-1].replace("_", " ")
-    except requests.exceptions.RequestException:
-        pass
-    return DEFAULT_CITY
 
-
-def get_city_name(lat: float, lon: float) -> str:
-    return _geocode_cached(round(lat, 2), round(lon, 2))
 
 # =============================================================
 # CẢNH BÁO NÔNG NGHIỆP
