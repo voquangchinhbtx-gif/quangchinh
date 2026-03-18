@@ -30,10 +30,10 @@ from weather import (
 
 try:
     GENAI_KEY    = st.secrets["GEMINI_API_KEY"]
-    GEMINI_MODEL = st.secrets.get("GEMINI_MODEL", "gemini-3.0-flash")
+    GEMINI_MODEL = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
 except (KeyError, FileNotFoundError):
     GENAI_KEY    = ""
-    GEMINI_MODEL = "gemini-3.0-flash"
+    GEMINI_MODEL = "gemini-2.5-flash"
 
 genai.configure(api_key=GENAI_KEY)
 try:
@@ -45,21 +45,6 @@ except (KeyError, FileNotFoundError):
 
 genai.configure(api_key=GENAI_KEY)
 
-# DEBUG -- xoa sau khi biet ten model
-try:
-    available = [m.name for m in genai.list_models()
-                 if "generateContent" in m.supported_generation_methods]
-    st.sidebar.markdown("**Models available:**")
-    for m in available:
-        st.sidebar.caption(m)
-except Exception as e:
-    st.sidebar.error(str(e))
-
-@st.cache_resource
-def get_gemini_model(model_name: str):
-    return genai.GenerativeModel(model_name)
-
-model = get_gemini_model(GEMINI_MODEL)
 
 @st.cache_resource
 def get_gemini_model(model_name: str):
