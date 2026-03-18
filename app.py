@@ -387,7 +387,7 @@ def render_forecast_7day(lat: float, lon: float):
 # COMPONENT: ÁP LỰC BỆNH 7 ngày
 # =============================================================
 
-def render_disease_pressure_7 ngày(lat: float, lon: float):
+def render_disease_pressure_7day(lat: float, lon: float):
     st.markdown("### 🦠 Áp lực bệnh 7 ngày")
     dp = fetch_disease_pressure(lat, lon)
 
@@ -592,7 +592,7 @@ if menu == "📊 Dashboard":
         st.divider()
         render_forecast_7day(lat, lon)
         st.divider()
-        render_disease_pressure_7 ngày(lat, lon)
+        render_disease_pressure_7day(lat, lon)
     else:
         st.info("⏳ Đang tải dữ liệu thời tiết...")
 
@@ -734,7 +734,7 @@ elif menu == "🌱 Quản lý Cây trồng":
         st.info("🌵 Vườn chưa có cây. Hãy thêm cây mới ở trên.")
     else:
         with st.expander("🦠 Áp lực bệnh 7 ngày toàn vườn", expanded=False):
-            render_disease_pressure_7 ngày(lat, lon)
+            render_disease_pressure_7day(lat, lon)
 
         for p in plants_list:
             with st.container(border=True):
