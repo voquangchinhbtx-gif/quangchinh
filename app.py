@@ -22,7 +22,7 @@ from database import (
 from streamlit_js_eval import get_geolocation
 from weather import (
     get_weather, get_city_name,
-    get_forecast_7day, get_disease_pressure_168h
+    get_forecast_7day, get_disease_pressure_7day
 )
 
 # =============================================================
