@@ -36,15 +36,6 @@ except (KeyError, FileNotFoundError):
     GEMINI_MODEL = "gemini-2.5-flash"
 
 genai.configure(api_key=GENAI_KEY)
-try:
-    GENAI_KEY    = st.secrets["GEMINI_API_KEY"]
-    GEMINI_MODEL = st.secrets.get("GEMINI_MODEL", "gemini-2.0-flash")
-except (KeyError, FileNotFoundError):
-    GENAI_KEY    = ""
-    GEMINI_MODEL = "gemini-2.0-flash"
-
-genai.configure(api_key=GENAI_KEY)
-
 
 @st.cache_resource
 def get_gemini_model(model_name: str):
