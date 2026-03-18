@@ -783,6 +783,7 @@ Hãy tạo QUY TRÌNH CHUẨN TOÀN VỤ từ ủ hạt đến thu hoạch:
 |----------|----------|----------------|---------------|
 
 ### 📆 DỰ KIẾN NGÀY THU HOẠCH
+QUAN TRỌNG: Mỗi giai đoạn tối đa 3 gạch đầu dòng. Ngắn gọn, súc tích.
 Ngày thu hoạch dự kiến: YYYY-MM-DD""",
                                     request_options={"timeout": 60}
                                 )
@@ -849,7 +850,8 @@ Cảnh báo: {', '.join(warnings_list) if warnings_list else 'Không có'}
 | Ngày | Việc cần làm | Lưu ý |
 |------|-------------|-------|
 ### ⚡ HÀNH ĐỘNG NGAY HÔM NAY
-Liệt kê đúng 3 việc quan trọng nhất, mỗi việc 1 dòng.""",
+Liệt kê đúng 3 việc quan trọng nhất, mỗi việc 1 dòng.
+QUAN TRỌNG: Toàn bộ response tối đa 400 từ. Ngắn gọn.""",
                                     request_options={"timeout": 60}
                                 )
                                 analyze_text = getattr(res, "text", None)
