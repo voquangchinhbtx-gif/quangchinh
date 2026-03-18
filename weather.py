@@ -296,7 +296,7 @@ def get_forecast_7day(lat: float, lon: float) -> list:
         return []
 
 # =============================================================
-# ÁP LỰC BỆNH 48H
+# ÁP LỰC BỆNH 7 NGÀY
 # =============================================================
 
 def get_disease_pressure_7day(lat: float, lon: float) -> dict:
