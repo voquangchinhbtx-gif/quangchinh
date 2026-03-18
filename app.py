@@ -1322,6 +1322,36 @@ elif menu == "💬 Trợ lý Kỹ thuật":
 
         with st.spinner("🤖 AI đang phân tích dữ liệu..."):
             try:
+                # Tổng hợp nhật ký tất cả cây trong vườn
+                plant_history = []
+                for pl in data.get("plants", []):
+                    try:
+                        pd_ = datetime.strptime(pl["date"], "%Y-%m-%d")
+                        age_days = max((datetime.now() - pd_).days, 0)
+                    except (ValueError, KeyError):
+                        age_days = 0
+
+                    parts_     = pl["name"].split("|", 1)
+                    crop_name_ = parts_[1].strip() if len(parts_) > 1 else parts_[0].strip()
+
+                    recent_logs = " → ".join([
+                        f"{l['d']}: {l['c']}" for l in pl.get("logs", [])[-5:]
+                    ])
+
+                    plant_history.append(
+                        f"• {crop_name_} ({age_days} ngày tuổi)"
+                        + (f"\n  Nhật ký gần nhất: {recent_logs}" if recent_logs
+                           else "\n  Nhật ký: Chưa có")
+                        + (f"\n  Dự kiến thu hoạch: {pl['date_harvest']}"
+                           if pl.get("date_harvest") else "")
+                    )
+
+                plant_history_str = (
+                    "\n".join(plant_history)
+                    if plant_history
+                    else "Chưa có cây nào trong vườn."
+                )
+
                 w_ctx = (
                     f"Nhiệt độ {temp_now}°C, Độ ẩm {hum_now}%, "
                     f"Gió {wind_now} km/h, {desc_now}"
@@ -1329,16 +1359,27 @@ elif menu == "💬 Trợ lý Kỹ thuật":
                     + f". Áp lực bệnh 48h: {dp.get('level','?').upper()} "
                     f"(score {dp.get('score',0)}/100)"
                 )
-                full_prompt = f"""
-Bạn là Chuyên gia Nông nghiệp Công nghệ cao.
-Dữ liệu môi trường hiện tại tại {city}: {w_ctx}
-Câu hỏi của nông dân: {prompt}
 
-Yêu cầu:
-- Trả lời bằng tiếng Việt.
-- Tập trung giải pháp kỹ thuật, ưu tiên hữu cơ/sinh học.
-- Có tính đến VPD và áp lực bệnh hiện tại khi tư vấn.
-- Sử dụng Markdown (###, **, -) để trình bày đẹp mắt.
+                full_prompt = f"""
+Bạn là Chuyên gia Nông nghiệp Công nghệ cao, đang tư vấn trực tiếp cho chủ vườn.
+Trả lời BẰNG TIẾNG VIỆT, ngắn gọn và sát thực tế.
+
+=== MÔI TRƯỜNG HIỆN TẠI tại {city} ===
+{w_ctx}
+
+=== TÌNH TRẠNG CÁC CÂY TRONG VƯỜN ===
+{plant_history_str}
+
+=== CÂU HỎI CỦA NÔNG DÂN ===
+{prompt}
+
+Yêu cầu khi trả lời:
+- Nếu câu hỏi liên quan đến cây cụ thể trong vườn → đối chiếu với nhật ký
+  của cây đó để trả lời SÁT THỰC TẾ, không trả lời chung chung.
+- Nếu nhật ký có dấu hiệu bất thường liên quan → chủ động đề cập và cảnh báo.
+- Ưu tiên giải pháp hữu cơ/sinh học, chỉ đề xuất hóa học khi thực sự cần.
+- Có tính đến VPD và áp lực bệnh 48h khi tư vấn tưới tiêu và phòng bệnh.
+- Dùng Markdown (###, **, -) để trình bày rõ ràng.
 """
                 response = model.generate_content(
                     full_prompt,
