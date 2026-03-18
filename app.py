@@ -258,7 +258,7 @@ def fetch_forecast_7day(lat: float, lon: float) -> list:
 
 @st.cache_data(ttl=600)
 def fetch_disease_pressure(lat: float, lon: float) -> dict:
-    return get_disease_pressure_7 ngày(lat, lon)
+    return get_disease_pressure_7 day(lat, lon)
 
 
 # =============================================================
