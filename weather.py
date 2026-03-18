@@ -1,9 +1,6 @@
+# -*- coding: utf-8 -*-
 """
 weather.py - GREEN FARM
-- get_weather               : thoi tiet hien tai
-- get_forecast_7day         : du bao 7 ngay
-- get_disease_pressure_48h  : ap luc benh 48h
-- get_agri_warnings         : canh bao WMO code + gio
 """
 
 import requests
@@ -14,19 +11,19 @@ _session.headers.update({"User-Agent": "GreenFarm/1.0 (greenfarm@example.com)"})
 
 DEFAULT_LAT  = 16.4637
 DEFAULT_LON  = 107.5909
-DEFAULT_CITY = "Kim Long, Hue (Mac dinh)"
+DEFAULT_CITY = "Kim Long, Huế (Mặc định)"
 
 WEATHER_MAP = {
-    0:  "Troi quang, nang rao",  1:  "Phan lon quang dang",
-    2:  "May rai rac",           3:  "Troi nhieu may",
-    45: "Suong mu",              48: "Suong mu dong bang",
-    51: "Mua phun nhe",         53: "Mua phun vua",
-    55: "Mua phun day",         61: "Mua nhe",
-    63: "Mua vua",              65: "Mua nang hat",
-    71: "Tuyet roi nhe",        80: "Mua rao nhe",
-    81: "Mua rao vua",          82: "Mua rao manh",
-    95: "Dong set",             96: "Dong kem mua da",
-    99: "Dong manh kem mua da",
+    0:  "Trời quang, nắng ráo",  1:  "Phần lớn quang đãng",
+    2:  "Mây rải rác",           3:  "Trời nhiều mây",
+    45: "Sương mù",              48: "Sương mù đóng băng",
+    51: "Mưa phùn nhẹ",         53: "Mưa phùn vừa",
+    55: "Mưa phùn dày",         61: "Mưa nhẹ",
+    63: "Mưa vừa",              65: "Mưa nặng hạt",
+    71: "Tuyết rơi nhẹ",        80: "Mưa rào nhẹ",
+    81: "Mưa rào vừa",          82: "Mưa rào mạnh",
+    95: "Dông sét",             96: "Dông kèm mưa đá",
+    99: "Dông mạnh kèm mưa đá",
 }
 
 _CODE_CLEAR   = {0, 1}
@@ -48,7 +45,7 @@ def _geocode_cached(lat_r: float, lon_r: float) -> str:
         return (
             addr.get("city") or addr.get("town") or
             addr.get("village") or addr.get("county") or
-            "Vi tri cua ban"
+            "Vị trí của bạn"
         )
     except requests.exceptions.RequestException:
         pass
@@ -73,7 +70,7 @@ def get_city_name(lat: float, lon: float) -> str:
 
 def get_agri_warnings(temp, hum, code: int, wind: float = 0.0) -> list:
     if temp is None or hum is None:
-        return ["Dang cho du lieu cam bien..."]
+        return ["⏳ Đang chờ dữ liệu cảm biến..."]
 
     warnings = []
     wind = wind or 0.0
@@ -81,56 +78,56 @@ def get_agri_warnings(temp, hum, code: int, wind: float = 0.0) -> list:
     if hum > 85:
         if temp < 24:
             warnings.append(
-                "⚠️ Nam Suong mai: Do am cao & troi mat, "
-                "benh lay lan cuc nhanh. Phun Bordeaux hoac Trichoderma ngay."
+                "⚠️ Cảnh báo Nấm Sương mai: Độ ẩm cao & trời mát, "
+                "bệnh lây lan cực nhanh. Phun Bordeaux hoặc Trichoderma ngay."
             )
         else:
             warnings.append(
-                "⚠️ Thoi re / Phan trang: Do am cao lam nam sinh soi. "
-                "Kiem tra thoat nuoc, rai voi xung quanh goc."
+                "⚠️ Cảnh báo Thối rễ / Phấn trắng: Độ ẩm cao làm nấm sinh sôi. "
+                "Kiểm tra thoát nước, rải vôi xung quanh gốc."
             )
     elif 70 <= hum <= 85 and temp > 28:
         warnings.append(
-            "🔍 Theo doi Heo xanh vi khuan: "
-            "Dieu kien oi nong am rat thuan loi cho Ralstonia solanacearum."
+            "🔍 Theo dõi bệnh Héo xanh vi khuẩn: "
+            "Điều kiện oi nóng ẩm rất thuận lợi cho Ralstonia solanacearum."
         )
 
     if code in _CODE_CLEAR and temp > 32:
         warnings.append(
-            "🚫 Bo tri / Nhen do: Thoi tiet kho nong "
-            "giup con trung chich hut sinh san manh. Kiem tra mat duoi la."
+            "🚫 Cảnh báo Bọ trĩ / Nhện đỏ: Thời tiết khô nóng "
+            "giúp côn trùng chích hút sinh sản mạnh. Kiểm tra mặt dưới lá."
         )
 
     if (51 <= code <= 67) or (80 <= code <= 82):
         warnings.append(
-            "🛡️ Mua co the rua troi phan bon & thuoc BVTV. "
-            "Che chan luong rau, kiem tra thoat nuoc muong ranh."
+            "🛡️ Lưu ý: Mưa có thể rửa trôi phân bón & thuốc BVTV. "
+            "Che chắn luống rau, kiểm tra thoát nước mương rãnh."
         )
 
     if 95 <= code <= 99:
         warnings.append(
-            "⛈️ Dong bao: Gio manh co the gay canh, do cay. "
-            "Cam coc chong do va buoc than cay truoc khi dong den."
+            "⛈️ Cảnh báo Dông bão: Gió mạnh có thể gãy cành, đổ cây. "
+            "Cắm cọc chống đỡ và buộc thân cây trước khi dông đến."
         )
 
     if code in _CODE_FOG:
         warnings.append(
-            "🌫️ Suong mu giu am tren la lau, "
-            "de gay dom la & benh nam. Theo doi sat buoi sang."
+            "🌫️ Lưu ý: Sương mù giữ ẩm trên lá lâu, "
+            "dễ gây đốm lá & bệnh nấm. Theo dõi sát buổi sáng."
         )
 
     if wind >= _WIND_DANGER:
         warnings.append(
-            f"💨 CANH BAO GIO MANH ({wind:.0f} km/h): Nguy co cao do nga cay. "
-            "Cam coc giu chac, thu hoach rau mau sap lua neu co the."
+            f"💨 CẢNH BÁO GIÓ MẠNH ({wind:.0f} km/h): Nguy cơ cao đổ ngã cây. "
+            "Cắm cọc giữ chắc, thu hoạch rau màu sắp lứa nếu có thể."
         )
     elif wind >= _WIND_CAUTION:
         warnings.append(
-            f"🌬️ Gio vua ({wind:.0f} km/h): Cay than thao (ot, ca chua, dua leo) "
-            "co the bi nghieng. Kiem tra day buoc va coc chong."
+            f"🌬️ Gió vừa ({wind:.0f} km/h): Cây thân thảo có thể bị nghiêng. "
+            "Kiểm tra dây buộc và cọc chống."
         )
 
-    return warnings if warnings else ["✅ Thoi tiet hien tai rat on dinh cho canh tac."]
+    return warnings if warnings else ["✅ Thời tiết hiện tại rất ổn định cho canh tác."]
 
 
 def get_forecast_7day(lat: float, lon: float) -> list:
@@ -161,8 +158,10 @@ def get_forecast_7day(lat: float, lon: float) -> list:
             rn   = rain[i]    if i < len(rain)      else 0
 
             if hum > 85 and tmp < 26:
+                risk = "critical"
+            elif hum > 80 or (51 <= code <= 82):
                 risk = "high"
-            elif hum > 75 or (51 <= code <= 82):
+            elif hum > 70 or code in (45, 48):
                 risk = "medium"
             else:
                 risk = "low"
@@ -174,13 +173,12 @@ def get_forecast_7day(lat: float, lon: float) -> list:
                 "hum_max":  hum,
                 "rain":     rn,
                 "code":     code,
-                "desc":     WEATHER_MAP.get(code, "On dinh"),
+                "desc":     WEATHER_MAP.get(code, "Ổn định"),
                 "risk":     risk,
             })
         return result
-
     except Exception as e:
-        print(f"Loi du bao 7 ngay: {e}")
+        print(f"Lỗi dự báo 7 ngày: {e}")
         return []
 
 
@@ -236,26 +234,26 @@ def get_disease_pressure_48h(lat: float, lon: float) -> dict:
                 "score": s,
             })
 
-        score = min(int(score_total / (10 * 48) * 100), 100)
+        score    = min(int(score_total / (10 * 48) * 100), 100)
         warnings = []
 
         if score >= 60 or hours_risk >= 20:
             level = "critical"
-            warnings.append("⛔ AP LUC BENH CUC CAO: Nam va vi khuan se bung phat trong 48h. Xu ly ngay!")
+            warnings.append("⛔ ÁP LỰC BỆNH CỰC CAO: Nấm và vi khuẩn sẽ bùng phát trong 48h. Xử lý ngay!")
         elif score >= 40 or hours_risk >= 12:
             level = "high"
-            warnings.append("🔴 Ap luc benh cao: Dieu kien rat thuan loi cho nam benh phat trien.")
+            warnings.append("🔴 Áp lực bệnh cao: Điều kiện rất thuận lợi cho nấm bệnh phát triển.")
         elif score >= 20 or hours_risk >= 6:
             level = "medium"
-            warnings.append("🟡 Ap luc benh trung binh: Can theo doi chat va phun phong ngua.")
+            warnings.append("🟡 Áp lực bệnh trung bình: Cần theo dõi chặt và phun phòng ngừa.")
         else:
             level = "low"
-            warnings.append("🟢 Ap luc benh thap: Dieu kien kha an toan trong 48h toi.")
+            warnings.append("🟢 Áp lực bệnh thấp: Điều kiện khá an toàn trong 48h tới.")
 
         if hours_risk >= 6:
             warnings.append(
-                f"⏰ Co {hours_risk} gio nguy hiem trong 48h, cao diem luc {peak_time}. "
-                "Uu tien phun Trichoderma hoac Nano Bac truoc gio cao diem."
+                f"⏰ Có {hours_risk} giờ nguy hiểm trong 48h, cao điểm lúc {peak_time}. "
+                "Ưu tiên phun Trichoderma hoặc Nano Bạc trước giờ cao điểm."
             )
 
         return {
@@ -268,10 +266,10 @@ def get_disease_pressure_48h(lat: float, lon: float) -> dict:
         }
 
     except Exception as e:
-        print(f"Loi ap luc benh 48h: {e}")
+        print(f"Lỗi áp lực bệnh 48h: {e}")
         return {
             "level": "unknown", "score": 0, "hours_risk": 0,
-            "peak_time": "", "warnings": ["Khong lay duoc du lieu du bao."],
+            "peak_time": "", "warnings": ["Không lấy được dữ liệu dự báo."],
             "hourly": [],
         }
 
@@ -281,7 +279,7 @@ def get_weather(lat=None, lon=None) -> dict:
         lat = float(lat) if lat is not None else None
         lon = float(lon) if lon is not None else None
         if lat is None or lon is None:
-            raise ValueError("Thieu toa do")
+            raise ValueError("Thiếu tọa độ")
     except (ValueError, TypeError):
         lat, lon = DEFAULT_LAT, DEFAULT_LON
 
@@ -299,7 +297,7 @@ def get_weather(lat=None, lon=None) -> dict:
         res.raise_for_status()
         data = res.json()
         if "current" not in data:
-            raise ValueError("Phan hoi API thieu truong 'current'")
+            raise ValueError("Phản hồi API thiếu trường 'current'")
 
         curr = data["current"]
         code = curr.get("weather_code", 0)
@@ -312,7 +310,7 @@ def get_weather(lat=None, lon=None) -> dict:
             "hum":  hum,
             "wind": wind,
             "rain": curr.get("precipitation") or 0,
-            "desc": WEATHER_MAP.get(code, "On dinh"),
+            "desc": WEATHER_MAP.get(code, "Ổn định"),
             "code": code,
             "lat":  lat,
             "lon":  lon,
@@ -321,19 +319,19 @@ def get_weather(lat=None, lon=None) -> dict:
         }
 
     except requests.exceptions.Timeout:
-        print(f"Timeout ({lat}, {lon})")
+        print(f"⏱️ Timeout khi gọi Open-Meteo ({lat}, {lon})")
     except requests.exceptions.ConnectionError:
-        print("Khong co ket noi mang")
+        print("🔌 Không có kết nối mạng")
     except requests.exceptions.HTTPError as e:
-        print(f"Loi HTTP: {e}")
+        print(f"🌐 Lỗi HTTP: {e}")
     except (ValueError, KeyError) as e:
-        print(f"Du lieu khong hop le: {e}")
+        print(f"📦 Dữ liệu không hợp lệ: {e}")
     except Exception as e:
-        print(f"Loi khong xac dinh: {e}")
+        print(f"❌ Lỗi không xác định: {e}")
 
     return {
         "temp": None, "hum": None, "wind": None, "rain": None,
-        "desc": "Du lieu du phong (offline)",
+        "desc": "Dữ liệu dự phòng (offline)",
         "code": -1, "lat": lat, "lon": lon, "city": city,
-        "agri_warnings": ["⚠️ Khong lay duoc du lieu thoi tiet. Kiem tra ket noi mang."],
+        "agri_warnings": ["⚠️ Không lấy được dữ liệu thời tiết. Kiểm tra kết nối mạng."],
     }
