@@ -49,7 +49,7 @@ model = get_gemini_model(GEMINI_MODEL)
 # CONSTANTS
 # =============================================================
 
-DEFAULT_LAT, DEFAULT_LON = 16.4637, 107.5909
+DEFAULT_LAT, DEFAULT_LON = 16.45780, 107.56150
 
 CROP_LIST = [
     "Ớt Aji Charapita", "Ớt Chỉ thiên", "Ớt Xiêm",
