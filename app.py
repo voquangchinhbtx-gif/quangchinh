@@ -6,6 +6,7 @@ Chạy: streamlit run app.py
 
 import io
 import re
+import socket
 import requests
 import pandas as pd
 import altair as alt
@@ -36,6 +37,7 @@ except (KeyError, FileNotFoundError):
     GEMINI_MODEL = "gemini-2.5-flash"
 
 genai.configure(api_key=GENAI_KEY)
+
 
 @st.cache_resource
 def get_gemini_model(model_name: str):
@@ -96,20 +98,25 @@ def build_season_context(history: list) -> str:
         if logs:
             log_texts = [
                 f"{l.get('d', l.get('date',''))}: {l.get('c', l.get('content',''))}"
-                for l in logs[-10:]
+                for l in logs[-5:]
             ]
             lines.append("Nhật ký: " + " | ".join(log_texts))
         recipe = s.get("recipe", "")
         if recipe:
-            lines.append(f"Quy trình AI vụ đó: {recipe[:300]}...")
+            lines.append(f"Quy trình vụ đó: {recipe[:200]}...")
     return "\n".join(lines)
 
 
 def get_weather_safe() -> dict:
+    cached = st.session_state.get("last_weather_cache")
+    if cached:
+        cached = dict(cached)
+        cached["desc"] = "📵 Offline — " + cached.get("desc", "")
+        return cached
     return {
         "temp": None, "hum": None, "wind": None,
         "rain": None, "desc": "Đang tải...",
-        "city": "Đang xác định vị trí...",
+        "city": "Đang xác định...",
         "lat": DEFAULT_LAT, "lon": DEFAULT_LON,
         "vpd": None, "vpd_status": {},
         "agri_warnings": []
@@ -121,6 +128,36 @@ def fmt_date(d: str) -> str:
         return datetime.strptime(d, "%Y-%m-%d").strftime("%d/%m")
     except Exception:
         return d
+
+
+def get_current_stage(p: dict) -> dict:
+    """Xác định giai đoạn hiện tại dựa trên các mốc thời gian đã có."""
+    if p.get("date"):
+        try:
+            age = max((datetime.now() - datetime.strptime(p["date"], "%Y-%m-%d")).days, 0)
+        except (ValueError, KeyError):
+            age = 0
+        return {"stage": "transplant", "label": "🌱 Đã trồng xuống đất",
+                "age": age, "emoji": "🌱", "next": None}
+
+    elif p.get("date_seedling"):
+        try:
+            age = max((datetime.now() - datetime.strptime(p["date_seedling"], "%Y-%m-%d")).days, 0)
+        except (ValueError, KeyError):
+            age = 0
+        return {"stage": "seedling", "label": "🌿 Đang gieo ươm",
+                "age": age, "emoji": "🌿", "next": "🌱 Trồng xuống đất"}
+
+    elif p.get("date_seed_soak"):
+        try:
+            age = max((datetime.now() - datetime.strptime(p["date_seed_soak"], "%Y-%m-%d")).days, 0)
+        except (ValueError, KeyError):
+            age = 0
+        return {"stage": "seed_soak", "label": "🫧 Đang ủ hạt",
+                "age": age, "emoji": "🫧", "next": "🌿 Gieo ươm"}
+
+    return {"stage": "unknown", "label": "Chưa xác định",
+            "age": 0, "emoji": "❓", "next": None}
 
 # =============================================================
 # STREAMLIT CONFIG
@@ -164,18 +201,17 @@ if "gps_lat" not in st.session_state:
     st.session_state["gps_resolved"] = False
 
 if not st.session_state["gps_resolved"]:
-    with st.spinner("📍 Đang xác định vị trí GPS thực tế..."):
+    try:
         loc = get_geolocation()
-    if loc and isinstance(loc, dict) and "coords" in loc:
-        try:
+        if loc and isinstance(loc, dict) and "coords" in loc:
             new_lat = float(loc["coords"]["latitude"])
             new_lon = float(loc["coords"]["longitude"])
             if abs(new_lat) > 0.01 or abs(new_lon) > 0.01:
                 st.session_state["gps_lat"]      = new_lat
                 st.session_state["gps_lon"]      = new_lon
                 st.session_state["gps_resolved"] = True
-        except (KeyError, ValueError, TypeError):
-            pass
+    except Exception:
+        pass
 
 if st.session_state["gps_lat"] is None:
     st.session_state["gps_lat"] = DEFAULT_LAT
@@ -233,7 +269,11 @@ data    = load_data()
 lat     = st.session_state["gps_lat"]
 lon     = st.session_state["gps_lon"]
 _w      = fetch_weather_data(lat, lon)
-weather = _w if _w is not None else get_weather_safe()
+if _w and _w.get("temp") is not None:
+    st.session_state["last_weather_cache"] = _w
+    weather = _w
+else:
+    weather = get_weather_safe()
 
 # =============================================================
 # SIDEBAR
@@ -244,6 +284,45 @@ with st.sidebar:
     st.caption(f"📍 {weather.get('city', '...')}")
     gps_source = "📡 GPS thực" if st.session_state["gps_resolved"] else "📌 Mặc định"
     st.caption(f"{gps_source}: {lat:.4f}, {lon:.4f}")
+
+    # Dropdown chon thanh pho phong khi GPS fail
+    with st.expander("📍 Chỉnh vị trí", expanded=not st.session_state["gps_resolved"]):
+        city_presets = {
+            "📌 Kim Long, Huế":     (16.45780, 107.56150),
+            "🏙️ Hà Nội":           (21.0285,  105.8542),
+            "🏙️ TP. Hồ Chí Minh":  (10.7769,  106.7009),
+            "🏙️ Đà Nẵng":          (16.0544,  108.2022),
+            "🏙️ Cần Thơ":          (10.0452,  105.7469),
+            "🏙️ Nha Trang":        (12.2388,  109.1967),
+            "🏙️ Đà Lạt":           (11.9465,  108.4419),
+            "✏️ Nhập tọa độ tay":   None,
+        }
+        selected_city = st.selectbox("Chọn thành phố:",
+                                     list(city_presets.keys()),
+                                     key="city_preset")
+        if city_presets[selected_city] is not None:
+            if st.button("✅ Dùng vị trí này", key="btn_use_preset"):
+                preset_lat, preset_lon = city_presets[selected_city]
+                st.session_state["gps_lat"]      = preset_lat
+                st.session_state["gps_lon"]      = preset_lon
+                st.session_state["gps_resolved"] = True
+                st.cache_data.clear()
+                st.rerun()
+        else:
+            manual_lat = st.number_input("Vĩ độ:", value=float(lat), format="%.4f", key="manual_lat")
+            manual_lon = st.number_input("Kinh độ:", value=float(lon), format="%.4f", key="manual_lon")
+            if st.button("✅ Lưu tọa độ", key="btn_save_coords"):
+                st.session_state["gps_lat"]      = manual_lat
+                st.session_state["gps_lon"]      = manual_lon
+                st.session_state["gps_resolved"] = True
+                st.cache_data.clear()
+                st.rerun()
+        if st.button("🔄 Reset mặc định", key="btn_reset_gps"):
+            st.session_state["gps_lat"]      = DEFAULT_LAT
+            st.session_state["gps_lon"]      = DEFAULT_LON
+            st.session_state["gps_resolved"] = False
+            st.cache_data.clear()
+            st.rerun()
 
     menu_options = [
         "📊 Dashboard",
@@ -278,7 +357,7 @@ def back_button():
 # =============================================================
 
 def render_forecast_7day(lat: float, lon: float):
-    st.markdown("### 🗓️ Dự báo 7 ngày (Tầm nhìn xa)")
+    st.markdown("### 🗓️ Dự báo 7 ngày")
     forecast = fetch_forecast_7day(lat, lon)
     if not forecast:
         st.warning("Không lấy được dự báo 7 ngày.")
@@ -291,23 +370,18 @@ def render_forecast_7day(lat: float, lon: float):
             icon    = RISK_COLOR.get(risk, "⚪")
             label   = "Hôm nay" if i == 0 else fmt_date(day["date"])
             content = (
-                f"**{label}**\n\n"
-                f"{icon}\n\n"
+                f"**{label}**\n\n{icon}\n\n"
                 f"↑{day['temp_max']:.0f}° ↓{day['temp_min']:.0f}°\n\n"
                 f"💧{day['hum_max']:.0f}%"
                 + (f"\n\n🌧️{day['rain']:.1f}mm" if day["rain"] > 0 else "")
-                + f"\n\n_{day['desc'][:14]}_"
+                + f"\n\n_{day['desc'][:12]}_"
             )
-            if risk == "critical":
-                st.error(content)
-            elif risk == "high":
-                st.warning(content)
-            elif risk == "medium":
-                st.info(content)
-            else:
-                st.success(content)
+            if risk == "critical":   st.error(content)
+            elif risk == "high":     st.warning(content)
+            elif risk == "medium":   st.info(content)
+            else:                    st.success(content)
 
-    st.caption("🟢 An toàn  🟡 Cần theo dõi  🔴 Nguy cơ cao  ⛔ Cực kỳ nguy hiểm")
+    st.caption("🟢 An toàn  🟡 Theo dõi  🔴 Nguy cơ  ⛔ Nguy hiểm")
 
 # =============================================================
 # COMPONENT: ÁP LỰC BỆNH 48H
@@ -328,38 +402,27 @@ def render_disease_pressure_48h(lat: float, lon: float):
     col1.metric("Mức độ rủi ro", f"{icon} {level.upper()}", f"Score: {score}/100")
     col2.metric("Giờ nguy hiểm", f"{hours_risk}h / 48h")
     col3.metric("Cao điểm",      peak_time if peak_time else "N/A")
-
     st.progress(min(score, 100))
 
     for w in warnings:
-        if level in ("critical", "high"):
-            st.error(w)
-        elif level == "medium":
-            st.warning(w)
-        else:
-            st.success(w)
+        if level in ("critical", "high"):   st.error(w)
+        elif level == "medium":             st.warning(w)
+        else:                               st.success(w)
 
-    # Biểu đồ áp lực theo giờ
     hourly = dp.get("hourly", [])
     if hourly:
         df = pd.DataFrame(hourly)
         df["color"] = df["risk"].map({
-            "high":   "#e74c3c",
-            "medium": "#f39c12",
-            "low":    "#27ae60"
+            "high": "#e74c3c", "medium": "#f39c12", "low": "#27ae60"
         })
         df_display = df[df.index % 2 == 0].copy()
-
         chart = (
             alt.Chart(df_display)
             .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
             .encode(
-                x=alt.X("time:N",
-                        title="Giờ trong ngày",
-                        sort=None,
+                x=alt.X("time:N", title="Giờ", sort=None,
                         axis=alt.Axis(labelAngle=-45, labelFontSize=10)),
-                y=alt.Y("score:Q",
-                        title="Điểm rủi ro (0-10)",
+                y=alt.Y("score:Q", title="Điểm rủi ro (0-10)",
                         scale=alt.Scale(domain=[0, 10])),
                 color=alt.Color("color:N", scale=None, legend=None),
                 tooltip=[
@@ -367,15 +430,12 @@ def render_disease_pressure_48h(lat: float, lon: float):
                     alt.Tooltip("temp:Q",  title="Nhiệt độ °C"),
                     alt.Tooltip("hum:Q",   title="Độ ẩm %"),
                     alt.Tooltip("score:Q", title="Điểm rủi ro"),
-                    alt.Tooltip("risk:N",  title="Mức độ"),
                 ]
             )
             .properties(
-                title=alt.TitleParams(
-                    "⏱️ Diễn biến áp lực bệnh 48h tới",
-                    fontSize=14, anchor="start"
-                ),
-                height=220
+                title=alt.TitleParams("⏱️ Diễn biến áp lực bệnh 48h",
+                                      fontSize=13, anchor="start"),
+                height=200
             )
         )
         threshold = (
@@ -384,63 +444,38 @@ def render_disease_pressure_48h(lat: float, lon: float):
             .encode(y="y:Q")
         )
         st.altair_chart(chart + threshold, use_container_width=True)
-        st.caption("📊 Đường đứt đỏ = ngưỡng cảnh báo | Cập nhật mỗi 10 phút")
+        st.caption("📊 Đường đứt đỏ = ngưỡng cảnh báo")
 
 # =============================================================
 # COMPONENT: SO KHỚP 3 BÊN AI
 # =============================================================
 
 def render_three_way_match(p: dict, crop_type: str, age: int):
-    st.markdown("### 🧠 Bộ não nhắc nhở (So khớp 3 bên)")
+    st.markdown("### 🧠 Bộ não nhắc nhở")
 
     if st.button("🔄 Phân tích & Nhắc việc", key=f"btn_3way_{p['id']}"):
         current_logs  = " | ".join([l["c"] for l in p.get("logs", [])[-5:]])
-        std_recipe    = p.get("standard_recipe", "Chưa có quy trình chuẩn.")[:500]
+        std_recipe    = p.get("standard_recipe", "Chưa có quy trình.")[:300]
         warnings_list = weather.get("agri_warnings", [])
         dp            = fetch_disease_pressure(lat, lon)
 
         prompt = f"""
-Bạn là AI quản lý vườn thông minh, chuyên phân tích dữ liệu thực địa.
-Trả lời BẰNG TIẾNG VIỆT.
+Bạn là AI quản lý vườn. Trả lời BẰNG TIẾNG VIỆT, tối đa 150 từ.
 
-=== NGUỒN 1: NHẬT KÝ THỰC TẾ (phân tích từ khóa) ===
 Cây: {crop_type} | Tuổi: {age} ngày
-Nhật ký gần nhất: {current_logs if current_logs else "Chưa có"}
+Nhật ký: {current_logs if current_logs else "Chưa có"}
+Thời tiết: {safe_weather_str(weather)}
+Áp lực bệnh: {dp.get('level','?').upper()} (score {dp.get('score',0)}/100)
+Quy trình: {std_recipe}
 
-Hãy nhận diện các từ khóa quan trọng trong nhật ký:
-- Triệu chứng bệnh: (vàng lá, héo, đốm, thối, rụng, cháy, cuộn...)
-- Hành động đã làm: (tưới, bón, phun, cắt, tỉa...)
-- Vấn đề chưa xử lý: (bọ, sâu, nhện, rệp, nấm...)
-- Khoảng thời gian: (hôm qua, 3 ngày, tuần trước...)
-
-=== NGUỒN 2: THỜI TIẾT + ÁP LỰC BỆNH ===
-Hiện tại: {safe_weather_str(weather)}
-Cảnh báo: {', '.join(warnings_list) if warnings_list else 'Không có'}
-Áp lực bệnh 48h: {dp.get('level','?').upper()}
-  - Score: {dp.get('score',0)}/100
-  - Số giờ nguy hiểm: {dp.get('hours_risk',0)}h
-  - Cao điểm: {dp.get('peak_time','?')}
-
-=== NGUỒN 3: QUY TRÌNH CHUẨN ===
-{std_recipe}
-
-=== NHIỆM VỤ ===
-Dựa trên 3 nguồn trên, xác định CHÍNH XÁC những việc bị bỏ sót hoặc cần làm ngay.
-
-Ưu tiên theo thứ tự:
-1. Việc KHẨN CẤP (áp lực bệnh cao + triệu chứng trong nhật ký)
-2. Việc QUAN TRỌNG (quy trình chuẩn yêu cầu nhưng chưa thấy trong nhật ký)
-3. Việc NÊN LÀM (phòng ngừa dựa trên dự báo thời tiết)
-
-Format BẮT BUỘC, mỗi việc 1 dòng:
-VIEC_1: [🚨/⚠️/💡 emoji mức độ] [tên việc ngắn gọn] | [lý do cụ thể dựa trên dữ liệu]
+Tìm tối đa 5 việc bị bỏ sót hoặc cần làm ngay.
+Format bắt buộc:
+VIEC_1: [🚨/⚠️/💡] [tên việc] | [lý do ngắn]
 VIEC_2: ...
-(tối đa 5 việc, không giải thích thêm)
-QUAN TRỌNG: Tối đa 5 dòng VIEC_, mỗi dòng dưới 20 từ.
 """
-        with st.spinner("AI đang so sánh 3 nguồn dữ liệu..."):
+        with st.spinner("AI đang phân tích..."):
             try:
-                res  = model.generate_content(prompt, request_options={"timeout": 20})
+                res  = model.generate_content(prompt, request_options={"timeout": 30})
                 text = getattr(res, "text", "") or ""
                 tasks = []
                 for line in text.strip().split("\n"):
@@ -450,35 +485,28 @@ QUAN TRỌNG: Tối đa 5 dòng VIEC_, mỗi dòng dưới 20 từ.
                         if task_text:
                             tasks.append(task_text)
                 if not tasks:
-                    tasks = [
-                        line.strip() for line in text.strip().split("\n")
-                        if line.strip() and len(line.strip()) > 10
-                    ][:5]
+                    tasks = [l.strip() for l in text.strip().split("\n")
+                             if l.strip() and len(l.strip()) > 10][:5]
                 if tasks:
                     st.session_state[f"tasks_3way_{p['id']}"] = tasks
                     p["tasks_3way"] = tasks
                     save_data(data)
                     st.rerun()
             except Exception as e:
-                st.error(f"Lỗi AI so khớp: {e}")
+                st.error(f"Lỗi AI: {e}")
 
-    tasks = st.session_state.get(
-        f"tasks_3way_{p['id']}",
-        p.get("tasks_3way", [])
-    )
+    tasks = st.session_state.get(f"tasks_3way_{p['id']}", p.get("tasks_3way", []))
     if tasks:
         st.markdown("---")
-        st.markdown("#### 📋 Danh sách việc cần làm")
+        st.markdown("#### 📋 Việc cần làm")
 
         urgent  = [t for t in tasks if "🚨" in t]
         warning = [t for t in tasks if "⚠️" in t]
         tip     = [t for t in tasks if "💡" in t]
-
         c1, c2, c3 = st.columns(3)
         c1.metric("🚨 Khẩn cấp",   len(urgent))
         c2.metric("⚠️ Quan trọng", len(warning))
         c3.metric("💡 Nên làm",    len(tip))
-
         st.markdown("---")
 
         for idx, task in enumerate(tasks):
@@ -486,23 +514,16 @@ QUAN TRỌNG: Tối đa 5 dòng VIEC_, mỗi dòng dưới 20 từ.
             task_name = parts[0].strip()
             reason    = parts[1].strip() if len(parts) > 1 else ""
 
-            if "🚨" in task_name:
-                container = st.error
-            elif "⚠️" in task_name:
-                container = st.warning
-            else:
-                container = st.info
+            container = (st.error   if "🚨" in task_name else
+                         st.warning if "⚠️" in task_name else st.info)
 
             col_main, col_btn = st.columns([5, 1])
             with col_main:
-                container(
-                    f"**{task_name}**\n\n_{reason}_"
-                    if reason else f"**{task_name}**"
-                )
+                container(f"**{task_name}**\n\n_{reason}_" if reason
+                          else f"**{task_name}**")
             with col_btn:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("✅ Xong",
-                             key=f"done_3way_{p['id']}_{idx}",
+                if st.button("✅", key=f"done_3way_{p['id']}_{idx}",
                              use_container_width=True):
                     p.setdefault("logs", []).append({
                         "d": datetime.now().strftime("%d/%m %H:%M"),
@@ -512,24 +533,20 @@ QUAN TRỌNG: Tối đa 5 dòng VIEC_, mỗi dòng dưới 20 từ.
                     st.session_state[f"tasks_3way_{p['id']}"] = remaining
                     p["tasks_3way"] = remaining
                     save_data(data)
-                    st.success("✅ Đã ghi vào nhật ký!")
                     st.rerun()
 
         if st.button("🎉 Hoàn thành tất cả",
                      key=f"done_all_{p['id']}",
-                     type="primary",
-                     use_container_width=True):
+                     type="primary", use_container_width=True):
             for task in tasks:
-                parts     = task.split("|", 1)
-                task_name = parts[0].strip()
                 p.setdefault("logs", []).append({
                     "d": datetime.now().strftime("%d/%m %H:%M"),
-                    "c": f"✅ Đã thực hiện: {task_name[:80]}"
+                    "c": f"✅ Đã thực hiện: {task.split('|')[0].strip()[:80]}"
                 })
             st.session_state.pop(f"tasks_3way_{p['id']}", None)
             p["tasks_3way"] = []
             save_data(data)
-            st.success("🎉 Tuyệt vời! Đã hoàn thành tất cả việc hôm nay!")
+            st.success("🎉 Hoàn thành tất cả!")
             st.rerun()
 
 # =============================================================
@@ -550,29 +567,21 @@ if menu == "📊 Dashboard":
 
         if weather.get("wind") is not None:
             wind_val   = weather["wind"]
-            wind_delta = (
-                "⛔ Rất mạnh" if wind_val >= 40
-                else "⚠️ Vừa"  if wind_val >= 20
-                else "✅ Nhẹ"
-            )
+            wind_delta = ("⛔ Rất mạnh" if wind_val >= 40
+                          else "⚠️ Vừa" if wind_val >= 20 else "✅ Nhẹ")
             st.metric("💨 Gió", f"{wind_val} km/h", wind_delta)
 
-        # VPD — dùng từ weather dict, không tính lại
         vpd        = weather.get("vpd")
         vpd_status = weather.get("vpd_status", {})
-
         if vpd is not None:
             st.markdown(
-                f"### 💨 Chỉ số VPD: `{vpd:.2f} kPa` "
-                f"— {vpd_status.get('label', '')}"
+                f"### 💨 VPD: `{vpd:.2f} kPa` — {vpd_status.get('label','')}"
             )
             if vpd_status.get("warning"):
                 if vpd_status["level"] in ("danger_low", "danger_high"):
                     st.error(vpd_status["warning"])
                 else:
                     st.warning(vpd_status["warning"])
-        else:
-            st.markdown("### 💨 Chỉ số VPD: Đang tải...")
 
         warnings = weather.get("agri_warnings", [])
         if warnings:
@@ -584,7 +593,6 @@ if menu == "📊 Dashboard":
         render_forecast_7day(lat, lon)
         st.divider()
         render_disease_pressure_48h(lat, lon)
-
     else:
         st.info("⏳ Đang tải dữ liệu thời tiết...")
 
@@ -597,7 +605,7 @@ elif menu == "🌱 Quản lý Cây trồng":
     st.title("🌱 Quản lý Vườn & Hệ thống Tối ưu AI")
 
     with st.expander("⚙️ Thiết lập & Quản lý danh sách cây", expanded=False):
-        tab_add, tab_edit = st.tabs(["➕ Thêm cây mới", "✏️ Chỉnh sửa thông tin"])
+        tab_add, tab_edit = st.tabs(["➕ Thêm cây mới", "✏️ Chỉnh sửa"])
 
         with tab_add:
             crop_select = st.selectbox("🌿 Chọn loại cây trồng", CROP_LIST,
@@ -611,38 +619,63 @@ elif menu == "🌱 Quản lý Cây trồng":
             name_in = st.text_input("Tên định danh vụ",
                                     placeholder="Ví dụ: Ớt Aji - Lứa 01",
                                     key="add_name")
+
             st.markdown("##### 📅 Các mốc thời gian")
-            c1, c2 = st.columns(2)
-            with c1:
-                date_seed_soak  = st.date_input("🫧 Ngày ủ hạt",
-                                                value=datetime.now(),
-                                                key="date_seed_soak")
-                date_transplant = st.date_input("🌱 Ngày trồng xuống đất",
-                                                value=datetime.now(),
-                                                key="date_transplant")
-            with c2:
-                date_seedling = st.date_input("🌿 Ngày gieo ươm",
+            st.caption("💡 Chỉ tick những mốc đã xảy ra — cập nhật sau khi có.")
+
+            has_seed_soak = st.checkbox("🫧 Đã ủ hạt", key="has_seed_soak")
+            date_seed_soak = None
+            if has_seed_soak:
+                date_seed_soak = st.date_input("Ngày ủ hạt",
+                                               value=datetime.now(),
+                                               key="date_seed_soak")
+
+            has_seedling = st.checkbox("🌿 Đã gieo ươm", key="has_seedling",
+                                       disabled=not has_seed_soak)
+            date_seedling = None
+            if has_seedling:
+                date_seedling = st.date_input("Ngày gieo ươm",
                                               value=datetime.now(),
                                               key="date_seedling")
-                st.caption("🍅 Ngày thu hoạch do AI tự tính sau khi tạo quy trình.")
+
+            has_transplant = st.checkbox("🌱 Đã trồng xuống đất",
+                                         key="has_transplant",
+                                         disabled=not has_seedling)
+            date_transplant = None
+            if has_transplant:
+                date_transplant = st.date_input("Ngày trồng xuống đất",
+                                                value=datetime.now(),
+                                                key="date_transplant")
+
+            if has_seed_soak:
+                stage_now = ("🌱 Đã trồng" if has_transplant
+                             else "🌿 Đang ươm" if has_seedling
+                             else "🫧 Đang ủ hạt")
+                st.info(f"📍 Giai đoạn: **{stage_now}**")
+                st.caption("🍅 Ngày thu hoạch do AI tự tính.")
 
             if st.button("🚀 Khởi tạo vườn", key="btn_init_farm"):
                 if name_in.strip() and type_in.strip():
-                    data = add_plant(
-                        data, f"{name_in} | {type_in}",
-                        date_transplant.strftime("%Y-%m-%d"),
-                        extra={
-                            "date_seed_soak": date_seed_soak.strftime("%Y-%m-%d"),
-                            "date_seedling":  date_seedling.strftime("%Y-%m-%d"),
-                            "date_harvest":   None,
-                        }
-                    )
-                    save_data(data)
-                    st.success(
-                        f"Đã thêm **{name_in}**! "
-                        "Nhấn 🌱 Tạo quy trình chuẩn để AI tính ngày thu hoạch."
-                    )
-                    st.rerun()
+                    if not has_seed_soak:
+                        st.warning("Vui lòng tick ít nhất 🫧 Đã ủ hạt.")
+                    else:
+                        main_date = (
+                            date_transplant or date_seedling or date_seed_soak
+                        ).strftime("%Y-%m-%d")
+                        data = add_plant(
+                            data, f"{name_in} | {type_in}",
+                            main_date,
+                            extra={
+                                "date_seed_soak": date_seed_soak.strftime("%Y-%m-%d")
+                                                  if date_seed_soak else None,
+                                "date_seedling":  date_seedling.strftime("%Y-%m-%d")
+                                                  if date_seedling else None,
+                                "date_harvest":   None,
+                            }
+                        )
+                        save_data(data)
+                        st.success(f"Đã thêm **{name_in}**! Nhấn tạo quy trình để AI tư vấn.")
+                        st.rerun()
                 else:
                     st.warning("Vui lòng điền đủ Tên và Loại cây.")
 
@@ -665,7 +698,8 @@ elif menu == "🌱 Quản lý Cây trồng":
                     new_ss = st.date_input("🫧 Ngày ủ hạt",
                                            value=val_ss, key="edit_seed_soak")
                     try:
-                        val_tr = datetime.strptime(p_edit["date"], "%Y-%m-%d")
+                        val_tr = (datetime.strptime(p_edit["date"], "%Y-%m-%d")
+                                  if p_edit.get("date") else datetime.now())
                     except (ValueError, KeyError):
                         val_tr = datetime.now()
                     new_d = st.date_input("🌱 Ngày trồng xuống đất",
@@ -678,7 +712,7 @@ elif menu == "🌱 Quản lý Cây trồng":
                         val_sl = datetime.now()
                     new_sl = st.date_input("🌿 Ngày gieo ươm",
                                            value=val_sl, key="edit_seedling")
-                    st.text_input("🍅 Dự kiến thu hoạch (do AI tính)",
+                    st.text_input("🍅 Dự kiến thu hoạch",
                                   value=p_edit.get("date_harvest") or "Chưa có",
                                   disabled=True, key="edit_harvest_display")
 
@@ -697,7 +731,7 @@ elif menu == "🌱 Quản lý Cây trồng":
 
     plants_list = data.get("plants", [])
     if not plants_list:
-        st.info("🌵 Vườn hiện tại chưa có cây. Hãy thêm cây mới ở trên.")
+        st.info("🌵 Vườn chưa có cây. Hãy thêm cây mới ở trên.")
     else:
         with st.expander("🦠 Áp lực bệnh 48h toàn vườn", expanded=False):
             render_disease_pressure_48h(lat, lon)
@@ -706,25 +740,61 @@ elif menu == "🌱 Quản lý Cây trồng":
             with st.container(border=True):
                 col_info, col_care, col_action = st.columns([1.2, 2.5, 0.8])
 
+                stage_info = get_current_stage(p)
+                age        = stage_info["age"]
+
                 with col_info:
                     st.subheader(f"🌿 {p['name']}")
-                    try:
-                        plant_date = datetime.strptime(p["date"], "%Y-%m-%d")
-                    except (ValueError, KeyError):
-                        plant_date = datetime.now()
-                    age = max((datetime.now() - plant_date).days, 0)
-                    st.write(f"⏱️ **{age} ngày tuổi**")
+                    st.write(f"{stage_info['emoji']} **{stage_info['label']}**")
+                    st.write(f"⏱️ **{age} ngày** kể từ mốc này")
+
                     if p.get("date_seed_soak"):
                         st.caption(f"🫧 Ủ hạt: {p['date_seed_soak']}")
                     if p.get("date_seedling"):
                         st.caption(f"🌿 Gieo ươm: {p['date_seedling']}")
+                    if p.get("date"):
+                        st.caption(f"🌱 Trồng: {p['date']}")
                     st.caption(
                         f"🍅 Thu hoạch: {p['date_harvest']}"
                         if p.get("date_harvest") else "🍅 Thu hoạch: Chưa có"
                     )
+
+                    # Nut cap nhat moc tiep theo
+                    if stage_info.get("next"):
+                        with st.popover(f"📅 Cập nhật: {stage_info['next']}"):
+                            if stage_info["stage"] == "seed_soak":
+                                new_date = st.date_input("🌿 Ngày gieo ươm",
+                                                         value=datetime.now(),
+                                                         key=f"upd_seedling_{p['id']}")
+                                if st.button("✅ Xác nhận",
+                                             key=f"btn_upd_seedling_{p['id']}"):
+                                    p["date_seedling"] = new_date.strftime("%Y-%m-%d")
+                                    p.pop("standard_recipe", None)
+                                    p.pop("optimized_recipe", None)
+                                    st.session_state.pop(f"std_view_{p['id']}", None)
+                                    st.session_state.pop(f"st_view_{p['id']}", None)
+                                    save_data(data)
+                                    st.success("✅ Đã cập nhật! AI sẽ tạo quy trình mới.")
+                                    st.rerun()
+                            elif stage_info["stage"] == "seedling":
+                                new_date = st.date_input("🌱 Ngày trồng xuống đất",
+                                                         value=datetime.now(),
+                                                         key=f"upd_transplant_{p['id']}")
+                                if st.button("✅ Xác nhận",
+                                             key=f"btn_upd_transplant_{p['id']}"):
+                                    p["date"] = new_date.strftime("%Y-%m-%d")
+                                    p.pop("standard_recipe", None)
+                                    p.pop("optimized_recipe", None)
+                                    st.session_state.pop(f"std_view_{p['id']}", None)
+                                    st.session_state.pop(f"st_view_{p['id']}", None)
+                                    save_data(data)
+                                    st.success("✅ Đã cập nhật! AI sẽ tạo quy trình mới.")
+                                    st.rerun()
+
                     st.divider()
+
                     with st.popover("📖 Nhật ký vườn"):
-                        st.write(f"📝 Ghi chép cho **{p['name']}**")
+                        st.write(f"📝 **{p['name']}**")
                         log_text = st.text_area("Hôm nay có gì mới?",
                                                 key=f"log_area_{p['id']}")
                         if st.button("Lưu nhật ký", key=f"btn_log_{p['id']}"):
@@ -749,45 +819,74 @@ elif menu == "🌱 Quản lý Cây trồng":
                 with col_care:
                     parts     = p["name"].split("|", 1)
                     crop_type = parts[1].strip() if len(parts) > 1 else parts[0].strip()
-                    st.markdown(f"📋 **Phác đồ tối ưu AI cho: {crop_type}**")
+                    st.markdown(f"📋 **{stage_info['emoji']} Quy trình — {stage_info['label']}**")
 
-                    # Nút 1: Tạo quy trình chuẩn
-                    if st.button("🌱 Tạo quy trình chuẩn", key=f"btn_std_{p['id']}"):
-                        with st.spinner("AI đang tạo quy trình chuẩn..."):
+                    # Nut 1: Tao quy trinh theo giai doan
+                    if st.button(f"🌱 Tạo quy trình: {stage_info['label']}",
+                                 key=f"btn_std_{p['id']}"):
+                        with st.spinner("AI đang tạo quy trình..."):
                             try:
-                                res = model.generate_content(
-                                    f"""Bạn là chuyên gia nông nghiệp hữu cơ. Trả lời BẰNG TIẾNG VIỆT.
-Loại cây: {crop_type}
-Ngày ủ hạt: {p.get('date_seed_soak', 'Chưa có')}
-Ngày gieo ươm: {p.get('date_seedling', 'Chưa có')}
-Ngày trồng xuống đất: {p.get('date', 'Chưa có')}
-Thời tiết hiện tại: {safe_weather_str(weather)}
+                                if stage_info["stage"] == "seed_soak":
+                                    stage_prompt = f"""
+### 🫧 CHĂM SÓC HẠT ĐANG Ủ
+- Nhiệt độ, độ ẩm cần duy trì
+- Dấu hiệu nảy mầm tốt/không tốt
+- Thời gian nảy mầm dự kiến
 
-Hãy tạo QUY TRÌNH CHUẨN TOÀN VỤ từ ủ hạt đến thu hoạch:
+### ⚠️ LỖI THƯỜNG GẶP KHI Ủ HẠT
 
-### 🫧 GIAI ĐOẠN Ủ HẠT & GIEO ƯƠM
-### 🌱 GIAI ĐOẠN CÂY CON (0-30 ngày)
-### 🌿 GIAI ĐOẠN PHÁT TRIỂN (30-60 ngày)
-### 🌸 GIAI ĐOẠN RA HOA / KẾT TRÁI
-### 🍅 GIAI ĐOẠN THU HOẠCH
-### ⚠️ CÁC BỆNH THƯỜNG GẶP & CÁCH XỬ LÝ
-| Bệnh/Sâu | Dấu hiệu | Xử lý sinh học | Xử lý hóa học |
-|----------|----------|----------------|---------------|
+### 📅 DỰ KIẾN NGÀY GIEO ƯƠM
+Ngày gieo ươm dự kiến: YYYY-MM-DD
+Tối đa 150 từ."""
+
+                                elif stage_info["stage"] == "seedling":
+                                    stage_prompt = f"""
+### 🌿 CHĂM SÓC CÂY CON ĐANG ƯƠM
+- Ánh sáng, nhiệt độ, tưới nước
+- Phân bón giai đoạn ươm
+
+### 🛡️ PHÒNG BỆNH KHI ƯƠM
+
+### 📅 DỰ KIẾN NGÀY TRỒNG XUỐNG ĐẤT
+Ngày trồng xuống đất dự kiến: YYYY-MM-DD
+Tối đa 150 từ."""
+
+                                else:
+                                    stage_prompt = f"""
+### 🌱 CÂY CON (0-30 ngày)
+### 🌿 PHÁT TRIỂN (30-60 ngày)
+### 🌸 RA HOA / KẾT TRÁI
+### 🍅 THU HOẠCH
+### ⚠️ BỆNH THƯỜNG GẶP
+| Bệnh | Dấu hiệu | Xử lý sinh học | Xử lý hóa học |
+|------|----------|----------------|---------------|
 
 ### 📆 DỰ KIẾN NGÀY THU HOẠCH
-QUAN TRỌNG: Mỗi giai đoạn tối đa 3 gạch đầu dòng. Ngắn gọn, súc tích.
-Ngày thu hoạch dự kiến: YYYY-MM-DD""",
+Ngày thu hoạch dự kiến: YYYY-MM-DD
+Tối đa 300 từ."""
+
+                                res = model.generate_content(
+                                    f"""Chuyên gia nông nghiệp hữu cơ. Trả lời BẰNG TIẾNG VIỆT, ngắn gọn.
+Cây: {crop_type} | Giai đoạn: {stage_info['label']} ({age} ngày)
+Ủ hạt: {p.get('date_seed_soak','Chưa có')} | Gieo ươm: {p.get('date_seedling','Chưa có')} | Trồng: {p.get('date','Chưa có')}
+Thời tiết: {safe_weather_str(weather)}
+
+{stage_prompt}""",
                                     request_options={"timeout": 60}
                                 )
                                 std_text = getattr(res, "text", None)
                                 if std_text:
                                     p["standard_recipe"] = std_text
-                                    match = re.search(
-                                        r"Ngày thu hoạch dự kiến:\s*(\d{4}-\d{2}-\d{2})",
-                                        std_text
-                                    )
-                                    if match:
-                                        p["date_harvest"] = match.group(1)
+                                    p["recipe_stage"]    = stage_info["stage"]
+                                    for pattern, field in [
+                                        (r"Ngày thu hoạch dự kiến:\s*(\d{4}-\d{2}-\d{2})", "date_harvest"),
+                                        (r"Ngày trồng xuống đất dự kiến:\s*(\d{4}-\d{2}-\d{2})", "date_transplant_est"),
+                                        (r"Ngày gieo ươm dự kiến:\s*(\d{4}-\d{2}-\d{2})", "date_seedling_est"),
+                                    ]:
+                                        match = re.search(pattern, std_text)
+                                        if match:
+                                            p[field] = match.group(1)
+                                            break
                                     save_data(data)
                                     st.session_state[f"std_view_{p['id']}"] = std_text
                                     st.rerun()
@@ -799,13 +898,34 @@ Ngày thu hoạch dự kiến: YYYY-MM-DD""",
                     std_display = st.session_state.get(
                         f"std_view_{p['id']}", p.get("standard_recipe"))
                     if std_display:
-                        with st.expander("📋 Xem quy trình chuẩn", expanded=False):
+                        recipe_stage  = p.get("recipe_stage", "")
+                        stage_labels  = {
+                            "seed_soak":  "🫧 Ủ hạt",
+                            "seedling":   "🌿 Gieo ươm",
+                            "transplant": "🌱 Sau trồng",
+                        }
+                        if recipe_stage and recipe_stage != stage_info["stage"]:
+                            st.warning(
+                                f"⚠️ Quy trình cho **{stage_labels.get(recipe_stage,'')}** "
+                                f"— cây đã sang **{stage_info['label']}**. Nên tạo lại!"
+                            )
+                        col_t, col_b = st.columns([4, 1])
+                        with col_t:
+                            st.markdown(f"**📋 {stage_labels.get(recipe_stage, stage_info['label'])}**")
+                        with col_b:
+                            key     = f"show_std_{p['id']}"
+                            is_open = st.session_state.get(key, False)
+                            if st.button("🔼 Thu gọn" if is_open else "🔽 Xem",
+                                         key=f"btn_{key}"):
+                                st.session_state[key] = not is_open
+                                st.rerun()
+                        if st.session_state.get(f"show_std_{p['id']}", False):
                             st.markdown(std_display)
 
                     st.divider()
 
-                    # Nút 2: Phân tích hôm nay
-                    if st.button("🔍 Phân tích tình trạng hôm nay",
+                    # Nut 2: Phan tich hom nay
+                    if st.button("🔍 Phân tích hôm nay",
                                  key=f"btn_analyze_{p['id']}"):
                         with st.spinner("AI đang phân tích..."):
                             try:
@@ -817,33 +937,17 @@ Ngày thu hoạch dự kiến: YYYY-MM-DD""",
                                     f"({weather.get('vpd_status',{}).get('label','')})"
                                 )
                                 res = model.generate_content(
-                                    f"""Bạn là chuyên gia nông nghiệp hữu cơ thực chiến. Trả lời BẰNG TIẾNG VIỆT.
+                                    f"""Chuyên gia nông nghiệp. Trả lời BẰNG TIẾNG VIỆT, tối đa 200 từ.
 
-=== THÔNG TIN CÂY ===
-- Loại cây: {crop_type} | Tuổi: {age} ngày
-- Dự kiến thu hoạch: {p.get('date_harvest', 'Chưa có')}
+Cây: {crop_type} | {stage_info['label']} ({age} ngày)
+Thời tiết: {safe_weather_str(weather)} | {vpd_info}
+Áp lực bệnh: {dp.get('level','?').upper()} - {dp.get('hours_risk',0)}h nguy hiểm
+Nhật ký: {current_logs if current_logs else "Chưa có"}
 
-=== THỜI TIẾT & MÔI TRƯỜNG ===
-{safe_weather_str(weather)} | {vpd_info}
-Cảnh báo: {', '.join(warnings_list) if warnings_list else 'Không có'}
-Áp lực bệnh 48h: {dp.get('level','?').upper()} - {dp.get('hours_risk',0)}h nguy hiểm
-
-=== NHẬT KÝ GẦN NHẤT ===
-{current_logs if current_logs else "Chưa có nhật ký"}
-
-### 🌡️ ĐÁNH GIÁ TÌNH TRẠNG HIỆN TẠI
-### 💊 PHÂN BÓN CẦN BỔ SUNG NGAY
-| Loại phân | Liều lượng | Cách bón | Thời điểm |
-|-----------|-----------|----------|-----------|
-### 🛡️ PHÒNG TRỊ SÂU BỆNH (có tính đến áp lực bệnh 48h)
-| Đối tượng | Dấu hiệu | Xử lý sinh học | Xử lý hóa học |
-|-----------|----------|----------------|---------------|
-### 📅 LỊCH 7 NGÀY TỚI
-| Ngày | Việc cần làm | Lưu ý |
-|------|-------------|-------|
-### ⚡ HÀNH ĐỘNG NGAY HÔM NAY
-Liệt kê đúng 3 việc quan trọng nhất, mỗi việc 1 dòng.
-QUAN TRỌNG: Toàn bộ response tối đa 400 từ. Ngắn gọn.""",
+### ĐÁNH GIÁ NHANH
+### PHÂN BÓN CẦN BỔ SUNG (nếu có)
+### PHÒNG TRỊ SÂU BỆNH (nếu cần)
+### 3 VIỆC CẦN LÀM NGAY HÔM NAY""",
                                     request_options={"timeout": 60}
                                 )
                                 analyze_text = getattr(res, "text", None)
@@ -854,17 +958,16 @@ QUAN TRỌNG: Toàn bộ response tối đa 400 từ. Ngắn gọn.""",
                                     actions   = []
                                     in_action = False
                                     for line in analyze_text.split("\n"):
-                                        if "HÀNH ĐỘNG NGAY HÔM NAY" in line:
+                                        if "VIỆC CẦN LÀM NGAY" in line:
                                             in_action = True
                                             continue
                                         if in_action and line.strip().startswith(
                                                 ("1.", "2.", "3.", "-", "•")):
-                                            clean = re.sub(r"^[\d\.\-•\*\s]+", "",
-                                                           line).strip()
+                                            clean = re.sub(r"^[\d\.\-•\*\s]+", "", line).strip()
                                             if clean:
                                                 actions.append(clean)
                                         if in_action and line.startswith("#") \
-                                                and "HÀNH ĐỘNG" not in line:
+                                                and "VIỆC" not in line:
                                             break
                                     if actions:
                                         st.session_state[f"actions_{p['id']}"] = actions[:3]
@@ -876,39 +979,45 @@ QUAN TRỌNG: Toàn bộ response tối đa 400 từ. Ngắn gọn.""",
                     analyze_display = st.session_state.get(
                         f"analyze_view_{p['id']}", p.get("daily_analysis"))
                     if analyze_display:
-                        with st.expander("🔍 Kết quả phân tích hôm nay", expanded=True):
+                        col_t, col_b = st.columns([4, 1])
+                        with col_t:
+                            st.markdown("**🔍 Phân tích hôm nay**")
+                        with col_b:
+                            key     = f"show_analyze_{p['id']}"
+                            is_open = st.session_state.get(key, True)
+                            if st.button("🔼 Thu gọn" if is_open else "🔽 Xem",
+                                         key=f"btn_{key}"):
+                                st.session_state[key] = not is_open
+                                st.rerun()
+                        if st.session_state.get(f"show_analyze_{p['id']}", True):
                             st.markdown(analyze_display)
-
-                        actions = st.session_state.get(f"actions_{p['id']}", [])
-                        if actions:
-                            st.markdown("**⚡ Xác nhận hành động hôm nay:**")
-                            for idx, action in enumerate(actions):
-                                col_act, col_done = st.columns([5, 1])
-                                with col_act:
-                                    st.markdown(f"`{idx+1}.` {action}")
-                                with col_done:
-                                    if st.button("✅",
-                                                 key=f"done_action_{p['id']}_{idx}"):
-                                        p.setdefault("logs", []).append({
-                                            "d": datetime.now().strftime("%d/%m %H:%M"),
-                                            "c": f"✅ Đã thực hiện: {action[:80]}"
-                                        })
-                                        remaining = [a for j, a in enumerate(actions)
-                                                     if j != idx]
-                                        if remaining:
-                                            st.session_state[f"actions_{p['id']}"] = remaining
-                                        else:
-                                            st.session_state.pop(f"actions_{p['id']}", None)
-                                        save_data(data)
-                                        st.success("Đã ghi vào nhật ký!")
-                                        st.rerun()
+                            actions = st.session_state.get(f"actions_{p['id']}", [])
+                            if actions:
+                                st.markdown("**⚡ Xác nhận hành động:**")
+                                for idx, action in enumerate(actions):
+                                    col_act, col_done = st.columns([5, 1])
+                                    with col_act:
+                                        st.markdown(f"`{idx+1}.` {action}")
+                                    with col_done:
+                                        if st.button("✅", key=f"done_action_{p['id']}_{idx}"):
+                                            p.setdefault("logs", []).append({
+                                                "d": datetime.now().strftime("%d/%m %H:%M"),
+                                                "c": f"✅ Đã thực hiện: {action[:80]}"
+                                            })
+                                            remaining = [a for j, a in enumerate(actions) if j != idx]
+                                            if remaining:
+                                                st.session_state[f"actions_{p['id']}"] = remaining
+                                            else:
+                                                st.session_state.pop(f"actions_{p['id']}", None)
+                                            save_data(data)
+                                            st.rerun()
 
                     st.divider()
 
-                    # Nút 3: Tối ưu 15 ngày
-                    if st.button("🧠 AI: Tối ưu 15 ngày tới",
+                    # Nut 3: Toi uu 15 ngay
+                    if st.button("🧠 Tối ưu 15 ngày tới",
                                  key=f"btn_opt_{p['id']}"):
-                        with st.spinner("Đang tổng hợp lịch sử..."):
+                        with st.spinner("Đang tổng hợp..."):
                             try:
                                 current_logs = " | ".join([l["c"] for l in p.get("logs", [])])
                                 past_seasons = get_crop_history(data, crop_type)
@@ -916,36 +1025,28 @@ QUAN TRỌNG: Toàn bộ response tối đa 400 từ. Ngắn gọn.""",
                                 forecast     = fetch_forecast_7day(lat, lon)
                                 forecast_str = " | ".join([
                                     f"{fmt_date(d['date'])}: {d['desc']}, "
-                                    f"{d['temp_max']:.0f}°C, ẩm {d['hum_max']:.0f}%, "
-                                    f"{RISK_COLOR.get(d['risk'],'')} rủi ro"
+                                    f"{d['temp_max']:.0f}°C, {RISK_COLOR.get(d['risk'],'')} rủi ro"
                                     for d in forecast
                                 ])
                                 res = model.generate_content(
-                                    f"""Bạn là chuyên gia nông nghiệp hữu cơ cấp cao. Trả lời BẰNG TIẾNG VIỆT.
+                                    f"""Chuyên gia nông nghiệp. Trả lời BẰNG TIẾNG VIỆT, tối đa 300 từ.
 
-=== CÂY HIỆN TẠI ===
-- Loại: {crop_type} | Tuổi: {age} ngày | Thu hoạch: {p.get('date_harvest', 'Chưa có')}
-- Thời tiết: {safe_weather_str(weather)}
-- VPD: {weather.get('vpd','?')} kPa ({weather.get('vpd_status',{}).get('label','')})
-- Nhật ký: {current_logs if current_logs else "Chưa có"}
+Cây: {crop_type} | {stage_info['label']} ({age} ngày)
+Thu hoạch: {p.get('date_harvest','Chưa có')}
+Thời tiết: {safe_weather_str(weather)}
+Dự báo 7 ngày: {forecast_str}
+Nhật ký: {current_logs if current_logs else "Chưa có"}
+Vụ trước: {season_ctx}
 
-=== DỰ BÁO 7 NGÀY TỚI ===
-{forecast_str}
-
-=== {len(past_seasons)} VỤ TRƯỚC ===
-{season_ctx}
-
-### 📊 PHÂN TÍCH GIAI ĐOẠN SINH TRƯỞNG
-### 📊 HỌC TỪ VỤ TRƯỚC
-### 🌿 DINH DƯỠNG (có tính đến dự báo thời tiết và VPD)
-### 🛡️ BẢO VỆ THỰC VẬT (ưu tiên phòng ngừa dựa trên dự báo)
-### 🔧 ĐIỀU CHỈNH TỪ NHẬT KÝ
-### 📅 LỊCH 15 NGÀY
-| Ngày  | Giai đoạn | Việc cần làm | Lưu ý thời tiết |
-|-------|-----------|-------------|-----------------|
-| 1-5   | ...       | ...         | ...             |
-| 6-10  | ...       | ...         | ...             |
-| 11-15 | ...       | ...         | ...             |""",
+### PHÂN TÍCH GIAI ĐOẠN
+### DINH DƯỠNG (theo dự báo thời tiết)
+### BẢO VỆ THỰC VẬT
+### LỊCH 15 NGÀY
+| Ngày  | Việc cần làm | Lưu ý |
+|-------|-------------|-------|
+| 1-5   | ...         | ...   |
+| 6-10  | ...         | ...   |
+| 11-15 | ...         | ...   |""",
                                     request_options={"timeout": 60}
                                 )
                                 recipe_text = getattr(res, "text", None)
@@ -961,23 +1062,71 @@ QUAN TRỌNG: Toàn bộ response tối đa 400 từ. Ngắn gọn.""",
                     plan_display = st.session_state.get(
                         f"st_view_{p['id']}", p.get("optimized_recipe"))
                     if plan_display:
-                        with st.expander("📍 Xem quy trình tối ưu", expanded=False):
+                        col_t, col_b = st.columns([4, 1])
+                        with col_t:
+                            st.markdown("**📍 Quy trình tối ưu 15 ngày**")
+                        with col_b:
+                            key     = f"show_opt_{p['id']}"
+                            is_open = st.session_state.get(key, False)
+                            if st.button("🔼 Thu gọn" if is_open else "🔽 Xem",
+                                         key=f"btn_{key}"):
+                                st.session_state[key] = not is_open
+                                st.rerun()
+                        if st.session_state.get(f"show_opt_{p['id']}", False):
                             st.markdown(plan_display)
                     else:
-                        st.caption("Chưa có quy trình tối ưu. Hãy nhấn nút AI.")
+                        st.caption("Chưa có quy trình tối ưu.")
 
                     st.divider()
                     render_three_way_match(p, crop_type, age)
 
                 with col_action:
                     st.caption("⚙️ Thao tác")
-                    with st.popover("🗑️ Kết thúc vụ"):
+
+                    # Ket thuc vu -- luu archive
+                    with st.popover("✅ Kết thúc vụ"):
                         st.warning(f"Kết thúc vụ **{p['name']}**?")
-                        st.caption("Nhật ký & quy trình sẽ được lưu để AI học vụ sau.")
+                        st.caption("Nhật ký & quy trình lưu lại để AI học vụ sau.")
                         if st.button("✔️ Xác nhận",
-                                     key=f"btn_del_{p['id']}", type="primary"):
+                                     key=f"btn_end_{p['id']}", type="primary"):
                             data = archive_and_delete_plant(data, p["id"])
                             st.rerun()
+
+                    # Xoa cay -- 3 ly do
+                    with st.popover("🗑️ Xóa cây"):
+                        st.error(f"Xóa **{p['name']}**?")
+                        reason = st.radio(
+                            "Lý do:",
+                            ["🌿 Thêm nhầm", "🦠 Cây bị bệnh/chết", "🌪️ Thiên tai"],
+                            key=f"del_reason_{p['id']}"
+                        )
+                        if reason == "🌿 Thêm nhầm":
+                            st.caption("Xóa hoàn toàn, không lưu.")
+                            if st.button("🗑️ Xóa luôn",
+                                         key=f"btn_del_wrong_{p['id']}",
+                                         type="primary"):
+                                data["plants"] = [pl for pl in data["plants"]
+                                                  if pl["id"] != p["id"]]
+                                save_data(data)
+                                st.rerun()
+                        else:
+                            note = st.text_input(
+                                "Ghi chú nguyên nhân:",
+                                placeholder="Ví dụ: Thối rễ do tưới nhiều",
+                                key=f"del_note_{p['id']}"
+                            )
+                            st.caption("Lưu lại để AI học tránh lặp lại.")
+                            if st.button("🗑️ Xóa & Lưu bài học",
+                                         key=f"btn_del_learn_{p['id']}",
+                                         type="primary"):
+                                p.setdefault("logs", []).append({
+                                    "d": datetime.now().strftime("%d/%m %H:%M"),
+                                    "c": f"❌ {reason}. "
+                                         + (f"Nguyên nhân: {note}" if note else "")
+                                })
+                                data = archive_and_delete_plant(data, p["id"])
+                                st.rerun()
+
                     if weather.get("temp") is not None:
                         st.metric("🌡️", f"{weather['temp']}°C")
                         st.metric("💧", f"{weather['hum']}%")
@@ -985,8 +1134,7 @@ QUAN TRỌNG: Toàn bộ response tối đa 400 từ. Ngắn gọn.""",
                             st.metric("💨", f"{weather['wind']} km/h")
                     dp        = fetch_disease_pressure(lat, lon)
                     risk_icon = RISK_COLOR.get(dp.get("level", "unknown"), "⚪")
-                    st.metric("🦠 Bệnh 48h", f"{risk_icon} {dp.get('score',0)}/100")
-
+                    st.metric("🦠 48h", f"{risk_icon} {dp.get('score',0)}/100")
 # =============================================================
 # 🩺 BÁC SĨ AI & CAMERA
 # =============================================================
@@ -996,10 +1144,9 @@ elif menu == "🩺 Bác sĩ AI & Camera":
     st.title("🩺 Bác sĩ AI Thực địa")
 
     st.info(
-        "💡 **Quy trình:** Chụp ảnh → AI tự nhận diện cây & phân tích "
-        "kết hợp thời tiết Meteo + Áp lực bệnh 48h → Chẩn đoán & Kê đơn ngay.\n\n"
-        "**Mẹo chụp ảnh:** Đủ ánh sáng | Cận cảnh vết bệnh | "
-        "Để phần lá lành trong khung để AI đối chiếu."
+        "💡 **Quy trình:** Chụp ảnh → AI tự nhận diện & chẩn đoán "
+        "kết hợp thời tiết + áp lực bệnh 48h.\n\n"
+        "**Mẹo:** Đủ ánh sáng | Cận cảnh vết bệnh | Để lá lành trong khung."
     )
 
     gps_lat = st.session_state["gps_lat"]
@@ -1012,21 +1159,21 @@ elif menu == "🩺 Bác sĩ AI & Camera":
         st.sidebar.metric("💧 Độ ẩm",    f"{w['hum']}%")
         if w["wind"] is not None:
             st.sidebar.metric("💨 Gió",  f"{w['wind']} km/h")
-        st.sidebar.caption(f"🌤️ {w.get('desc', '')}")
+        st.sidebar.caption(f"🌤️ {w.get('desc','')}")
     risk_icon = RISK_COLOR.get(dp.get("level", "unknown"), "⚪")
-    st.sidebar.metric("🦠 Áp lực bệnh 48h",
+    st.sidebar.metric("🦠 Áp lực bệnh",
                       f"{risk_icon} {dp.get('level','?').upper()}",
                       f"Score: {dp.get('score',0)}/100")
 
-    # Danh sach cay de AI doi chieu — KHONG can chon truoc
+    # Danh sach cay de AI doi chieu -- KHONG can chon truoc
     all_plants = data.get("plants", [])
     if all_plants:
         plants_detail = []
         for pl in all_plants:
             try:
-                pd_ = datetime.strptime(pl["date"], "%Y-%m-%d")
-                age_days = max((datetime.now() - pd_).days, 0)
-            except (ValueError, KeyError):
+                si_ = get_current_stage(pl)
+                age_days = si_["age"]
+            except Exception:
                 age_days = 0
             recent_logs = " | ".join([l["c"] for l in pl.get("logs", [])[-3:]])
             parts_      = pl["name"].split("|", 1)
@@ -1039,27 +1186,24 @@ elif menu == "🩺 Bác sĩ AI & Camera":
     else:
         plants_detail_str = "Chưa có cây nào trong vườn (AI vẫn chẩn đoán bình thường)."
 
-    img_file = st.camera_input("📸 Chụp ảnh cây cần chẩn đoán — không cần chọn cây trước")
+    img_file = st.camera_input("📸 Chụp ảnh — AI tự nhận diện, không cần chọn cây trước")
 
     if img_file:
         image = Image.open(img_file)
         st.image(image, caption="Ảnh thực địa", width=500)
 
-        if st.button("🚀 Phân tích & Kê đơn điều trị",
+        if st.button("🚀 Phân tích & Chẩn đoán",
                      type="primary", key="btn_cam_ai"):
 
             buf = io.BytesIO()
             image.convert("RGB").save(buf, format="JPEG", quality=75, optimize=True)
             img_bytes = buf.getvalue()
 
-            if w["temp"] is not None:
-                weather_ctx = (
-                    f"Nhiệt độ: {w['temp']}°C | Độ ẩm: {w['hum']}% | "
-                    f"Gió: {w.get('wind','?')} km/h | {w.get('desc','')}"
-                )
-            else:
-                weather_ctx = "Không có dữ liệu thời tiết."
-
+            weather_ctx = (
+                f"Nhiệt độ: {w['temp']}°C | Độ ẩm: {w['hum']}% | "
+                f"Gió: {w.get('wind','?')} km/h | {w.get('desc','')}"
+                if w["temp"] is not None else "Không có dữ liệu thời tiết."
+            )
             agri_warns = weather.get("agri_warnings", [])
             dp_summary = (
                 f"Áp lực bệnh 48h: {dp.get('level','?').upper()} "
@@ -1069,87 +1213,49 @@ elif menu == "🩺 Bác sĩ AI & Camera":
             )
 
             full_prompt = f"""
-Bạn là Bác sĩ cây trồng chuyên nghiệp với 20 năm kinh nghiệm thực địa tại Đông Nam Á.
-Người nông dân vừa chụp ảnh và cần giúp đỡ NGAY LẬP TỨC.
-Dù cây trong ảnh là cây gì, bạn VẪN PHẢI chẩn đoán và đưa ra hướng xử lý cụ thể.
+Bạn là Bác sĩ cây trồng chuyên nghiệp. Dù cây gì cũng PHẢI chẩn đoán.
+Trả lời BẰNG TIẾNG VIỆT, ngắn gọn, tối đa 300 từ.
 
-=== VƯỜN HIỆN TẠI (để tham khảo và đối chiếu) ===
-{plants_detail_str}
-
-=== THỜI TIẾT THỰC ĐỊA (GPS: {gps_lat:.4f}, {gps_lon:.4f}) ===
-{weather_ctx}
+VƯỜN HIỆN TẠI: {plants_detail_str}
+THỜI TIẾT: {weather_ctx}
 {dp_summary}
-Cảnh báo nông nghiệp: {', '.join(agri_warns) if agri_warns else 'Không có'}
-
-Nhiệm vụ — nhìn vào ảnh và trả lời NGAY, BẰNG TIẾNG VIỆT:
+CẢNH BÁO: {', '.join(agri_warns) if agri_warns else 'Không có'}
 
 ### 🌿 1. NHẬN DIỆN CÂY
-- Tên cây (tên thường gọi + tên khoa học nếu biết).
-- Nếu trùng với cây trong vườn → ghi rõ tên định danh và số ngày tuổi.
-- Nếu KHÔNG có trong vườn → vẫn nhận diện bình thường và ghi:
-  "⚠️ Cây này chưa có trong danh sách vườn — chẩn đoán vẫn đầy đủ bên dưới"
+Tên cây + nếu có trong vườn thì ghi tên định danh.
+Nếu không có trong vườn: "⚠️ Chưa có trong danh sách vườn"
 
-### 🦠 2. CHẨN ĐOÁN VẤN ĐỀ
-Phân tích ảnh và xác định TẤT CẢ vấn đề đang thấy:
-
-**Bệnh (nếu có):**
-- Tên bệnh + tác nhân: Nấm / Vi khuẩn / Virus
-- Dấu hiệu nhận biết từ ảnh (màu sắc, hình dạng, vị trí)
-- Mức độ: [Mới xuất hiện / Đang lan rộng / Nghiêm trọng]
-
-**Sâu hại (nếu có):**
-- Tên sâu/côn trùng + đặc điểm nhận dạng
-- Kiểu gây hại: [Chích hút / Gặm nhấm / Đục thân / Cuộn lá]
-- Mức độ thiệt hại hiện tại
-
+### 🦠 2. CHẨN ĐOÁN
+**Bệnh (nếu có):** Tên + tác nhân + mức độ
+**Sâu hại (nếu có):** Tên + kiểu gây hại
 **Dinh dưỡng (nếu có dấu hiệu):**
-- Triệu chứng nhìn thấy trong ảnh
-- Chẩn đoán cụ thể:
-  * Vàng lá toàn bộ → thiếu Đạm (N)
-  * Vàng giữa gân xanh → thiếu Magie (Mg) hoặc Sắt (Fe)
-  * Lá đỏ tím → thiếu Lân (P)
-  * Mép lá cháy nâu → thiếu Kali (K)
-  * Chồi non chết, biến dạng → thiếu Canxi (Ca) hoặc Bo (B)
-  * Lá xanh đậm bất thường → thừa Đạm (N)
+- Vàng lá già → thiếu Đạm (N)
+- Vàng giữa gân xanh → thiếu Magie (Mg) / Sắt (Fe)
+- Lá đỏ tím → thiếu Lân (P)
+- Mép lá cháy nâu → thiếu Kali (K)
+- Chồi non chết/biến dạng → thiếu Canxi (Ca) / Bo (B)
+- Đốm vàng lá non → thiếu Mangan (Mn)
+- Lá nhỏ, đốt ngắn → thiếu Kẽm (Zn)
+- Vàng lá non đồng đều → thiếu Lưu huỳnh (S)
+- Lá xanh đậm, ít trái → thừa Đạm (N)
+- Mép lá cháy + khó hút dinh dưỡng → thừa Kali (K)
+- Lá cháy rìa, đất trắng → thừa muối
+**Nếu cây khỏe:** "✅ Cây khỏe" + lời khuyên phòng ngừa
 
-**Nếu cây trông bình thường:**
-- Ghi: "✅ Cây trông khỏe mạnh, không phát hiện vấn đề rõ ràng"
-- Vẫn đưa ra lời khuyên phòng ngừa dựa trên thời tiết hiện tại
-
-### ⚡ 3. LÀM NGAY BÂY GIỜ (trong 24h)
-2-3 bước cụ thể, người nông dân làm được ngay:
-- Bước 1: ...
-- Bước 2: ...
-- Bước 3: ...
+### ⚡ 3. LÀM NGAY (24h) — tối đa 3 bước
 
 ### 💊 4. THUỐC & CÁCH DÙNG
-| Loại | Tên sản phẩm | Liều lượng | Cách dùng |
-|------|-------------|------------|-----------|
-| 🌿 Sinh học (ưu tiên) | ... | ... | ... |
-| ⚗️ Hóa học (khi nặng) | ... | ... | ... |
-| 🧪 Dinh dưỡng bổ sung | ... | ... | ... |
+| Loại | Sản phẩm | Liều lượng | Cách dùng |
+|------|---------|------------|-----------|
+| 🌿 Sinh học | ... | ... | ... |
+| ⚗️ Hóa học | ... | ... | ... |
+| 🧪 Dinh dưỡng | ... | ... | ... |
 
-### 🌧️ 5. ẢNH HƯỞNG THỜI TIẾT 48H TỚI
-Với {weather_ctx} và {dp_summary},
-vấn đề này sẽ diễn biến thế nào? Cần làm gì TRƯỚC khi thời tiết thay đổi?
+### 📈 5. KẾT LUẬN
+Mức độ: [🟢/🟡/🔴/⛔] | Lây lan: [Thấp/Cao] | 1 câu quan trọng nhất.
+"""
 
-### 📅 6. LỊCH THEO DÕI 7 NGÀY
-| Ngày | Việc cần làm | Dấu hiệu cần chú ý |
-|------|-------------|-------------------|
-| 1-2  | ...         | ...               |
-| 3-4  | ...         | ...               |
-| 5-7  | ...         | ...               |
-
-### 📈 7. KẾT LUẬN
-- Mức độ nguy hiểm: [🟢 Thấp / 🟡 Trung bình / 🔴 Cao / ⛔ Khẩn cấp]
-- Nguy cơ lây lan sang cây khác trong vườn: [Thấp / Cao — lý do]
-- 1 câu tóm tắt quan trọng nhất cần nhớ.
-
-Ngôn ngữ: NGẮN GỌN, dễ hiểu, như đang nói chuyện trực tiếp với nông dân.
-Tuyệt đối KHÔNG nói "tôi không thể xác định" — hãy đưa ra chẩn đoán tốt nhất có thể.
-QUAN TRỌNG: Toàn bộ response tối đa 500 từ. Ngắn gọn, thực tế."""
-
-            with st.spinner("🔬 Bác sĩ AI đang phân tích ảnh và dữ liệu thực địa..."):
+            with st.spinner("🔬 Bác sĩ AI đang phân tích..."):
                 try:
                     img_part = {"mime_type": "image/jpeg", "data": img_bytes}
                     res      = model.generate_content(
@@ -1169,16 +1275,15 @@ QUAN TRỌNG: Toàn bộ response tối đa 500 từ. Ngắn gọn, thực tế.
                         st.session_state["last_diagnosis"] = {
                             "result":    result,
                             "plant":     matched_plant,
-                            "weather":   w,
                             "in_garden": matched_plant is not None,
                         }
                     else:
                         st.warning("⚠️ AI không phản hồi. Vui lòng thử lại.")
                 except Exception as e:
                     st.error(f"Lỗi hệ thống: {e}")
-                    st.info("Kiểm tra lại kết nối mạng hoặc GEMINI_API_KEY.")
+                    st.info("Kiểm tra kết nối mạng hoặc GEMINI_API_KEY.")
 
-    # Ket qua — NGOAI if img_file de khong mat khi chup lai
+    # Ket qua -- NGOAI if img_file
     diag = st.session_state.get("last_diagnosis")
     if diag:
         st.markdown("---")
@@ -1186,60 +1291,32 @@ QUAN TRỌNG: Toàn bộ response tối đa 500 từ. Ngắn gọn, thực tế.
         st.markdown(diag["result"])
         st.markdown("---")
 
-        if diag.get("in_garden") and diag.get("plant"):
-            plant_name = diag["plant"]["name"]
-            st.success(f"🎯 AI nhận diện khớp với vườn: **{plant_name}**")
-            col_save, col_done = st.columns([3, 2])
-            with col_save:
-                if st.button(f"💾 Lưu vào nhật ký '{plant_name}'",
-                             key="btn_save_diag"):
-                    summary = diag["result"][:120].rsplit(" ", 1)[0] + "..."
-                    for p in data["plants"]:
-                        if p["id"] == diag["plant"]["id"]:
-                            p.setdefault("logs", []).append({
-                                "d": datetime.now().strftime("%d/%m %H:%M"),
-                                "c": f"🩺 AI Chẩn đoán: {summary}"
-                            })
-                            break
-                    save_data(data)
-                    del st.session_state["last_diagnosis"]
-                    st.success(f"✅ Đã lưu vào nhật ký **{plant_name}**!")
-                    st.rerun()
-            with col_done:
-                if st.button("✅ Đã xử lý xong, lưu & đóng",
-                             key="btn_done_diag", type="primary"):
-                    for p in data["plants"]:
-                        if p["id"] == diag["plant"]["id"]:
-                            p.setdefault("logs", []).append({
-                                "d": datetime.now().strftime("%d/%m %H:%M"),
-                                "c": "✅ Đã xử lý bệnh theo chỉ dẫn Bác sĩ AI."
-                            })
-                            break
-                    save_data(data)
-                    del st.session_state["last_diagnosis"]
-                    st.success("Đã ghi nhật ký hoàn tất!")
-                    st.rerun()
+        # 2 che do luu / khong luu
+        col_mode1, col_mode2 = st.columns(2)
+        with col_mode1:
+            if st.button("💾 Lưu vào nhật ký vườn",
+                         use_container_width=True, key="btn_mode_save"):
+                st.session_state["show_save_options"] = True
+        with col_mode2:
+            if st.button("🚫 Không lưu, đóng lại",
+                         use_container_width=True, key="btn_mode_nosave"):
+                del st.session_state["last_diagnosis"]
+                st.session_state.pop("show_save_options", None)
+                st.rerun()
 
-        else:
-            st.info("🌿 Cây này chưa có trong danh sách vườn — chẩn đoán vẫn đầy đủ ở trên.")
-            col_a, col_b, col_c = st.columns(3)
+        if st.session_state.get("show_save_options"):
+            st.markdown("#### 💾 Lưu vào đâu?")
 
-            with col_a:
-                if st.button("➕ Thêm cây này vào vườn", key="btn_add_new_plant"):
-                    st.session_state["show_add_plant"] = True
-
-            with col_b:
-                if all_plants:
-                    manual_plant = st.selectbox(
-                        "Hoặc lưu vào cây có sẵn:",
-                        all_plants,
-                        format_func=lambda x: x["name"],
-                        key="sb_manual_plant"
-                    )
-                    if st.button("💾 Lưu vào cây này", key="btn_save_manual"):
+            if diag.get("in_garden") and diag.get("plant"):
+                plant_name = diag["plant"]["name"]
+                st.success(f"🎯 AI nhận diện khớp: **{plant_name}**")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button(f"✅ Lưu vào '{plant_name}'",
+                                 use_container_width=True, key="btn_save_matched"):
                         summary = diag["result"][:120].rsplit(" ", 1)[0] + "..."
                         for p in data["plants"]:
-                            if p["id"] == manual_plant["id"]:
+                            if p["id"] == diag["plant"]["id"]:
                                 p.setdefault("logs", []).append({
                                     "d": datetime.now().strftime("%d/%m %H:%M"),
                                     "c": f"🩺 AI Chẩn đoán: {summary}"
@@ -1247,34 +1324,64 @@ QUAN TRỌNG: Toàn bộ response tối đa 500 từ. Ngắn gọn, thực tế.
                                 break
                         save_data(data)
                         del st.session_state["last_diagnosis"]
-                        st.success(f"✅ Đã lưu vào **{manual_plant['name']}**!")
+                        st.session_state.pop("show_save_options", None)
+                        st.success(f"✅ Đã lưu vào **{plant_name}**!")
+                        st.rerun()
+                with col_b:
+                    if st.button("✅ Đã xử lý xong",
+                                 type="primary", use_container_width=True,
+                                 key="btn_done_matched"):
+                        for p in data["plants"]:
+                            if p["id"] == diag["plant"]["id"]:
+                                p.setdefault("logs", []).append({
+                                    "d": datetime.now().strftime("%d/%m %H:%M"),
+                                    "c": "✅ Đã xử lý bệnh theo Bác sĩ AI."
+                                })
+                                break
+                        save_data(data)
+                        del st.session_state["last_diagnosis"]
+                        st.session_state.pop("show_save_options", None)
                         st.rerun()
 
-            with col_c:
-                if st.button("🚫 Không lưu, chỉ xem", key="btn_discard_diag"):
+            # Chon cay thu cong
+            if all_plants:
+                st.markdown("**Hoặc chọn cây khác:**")
+                manual_plant = st.selectbox(
+                    "Chọn cây:",
+                    all_plants,
+                    format_func=lambda x: x["name"],
+                    key="sb_manual_save"
+                )
+                if st.button("💾 Lưu vào cây này",
+                             use_container_width=True, key="btn_save_manual"):
+                    summary = diag["result"][:120].rsplit(" ", 1)[0] + "..."
+                    for p in data["plants"]:
+                        if p["id"] == manual_plant["id"]:
+                            p.setdefault("logs", []).append({
+                                "d": datetime.now().strftime("%d/%m %H:%M"),
+                                "c": f"🩺 AI Chẩn đoán: {summary}"
+                            })
+                            break
+                    save_data(data)
                     del st.session_state["last_diagnosis"]
+                    st.session_state.pop("show_save_options", None)
+                    st.success(f"✅ Đã lưu vào **{manual_plant['name']}**!")
                     st.rerun()
 
-            if st.session_state.get("show_add_plant"):
+            # Them cay moi tu camera
+            with st.expander("➕ Thêm cây mới từ chẩn đoán này"):
                 with st.form("form_add_from_camera"):
-                    st.markdown("#### ➕ Thêm cây mới từ chẩn đoán")
-                    new_name = st.text_input(
-                        "Tên định danh vụ",
-                        placeholder="Ví dụ: Ớt sừng - Lứa 02"
-                    )
+                    new_name  = st.text_input("Tên định danh vụ",
+                                               placeholder="Ví dụ: Ớt sừng - Lứa 02")
                     new_date  = st.date_input("Ngày trồng xuống đất",
                                                value=datetime.now())
                     submitted = st.form_submit_button("🚀 Thêm vào vườn")
                     if submitted and new_name.strip():
-                        data = add_plant(
-                            data, new_name,
-                            new_date.strftime("%Y-%m-%d"),
-                            extra={
-                                "date_seed_soak": None,
-                                "date_seedling":  None,
-                                "date_harvest":   None,
-                            }
-                        )
+                        data = add_plant(data, new_name,
+                                         new_date.strftime("%Y-%m-%d"),
+                                         extra={"date_seed_soak": None,
+                                                "date_seedling":  None,
+                                                "date_harvest":   None})
                         summary = diag["result"][:120].rsplit(" ", 1)[0] + "..."
                         data["plants"][-1].setdefault("logs", []).append({
                             "d": datetime.now().strftime("%d/%m %H:%M"),
@@ -1282,7 +1389,7 @@ QUAN TRỌNG: Toàn bộ response tối đa 500 từ. Ngắn gọn, thực tế.
                         })
                         save_data(data)
                         del st.session_state["last_diagnosis"]
-                        st.session_state.pop("show_add_plant", None)
+                        st.session_state.pop("show_save_options", None)
                         st.success(f"✅ Đã thêm **{new_name}** và lưu chẩn đoán!")
                         st.rerun()
 
@@ -1305,102 +1412,158 @@ elif menu == "💬 Trợ lý Kỹ thuật":
     risk_icon = RISK_COLOR.get(dp.get("level", "unknown"), "⚪")
 
     st.caption(
-        f"📍 {city} | {temp_now}°C — {hum_now}% ẩm — Gió {wind_now} km/h — {desc_now}"
-        + (f" | VPD {vpd_now} kPa ({vpd_label})" if vpd_now else "")
-        + f" | 🦠 Bệnh 48h: {risk_icon} {dp.get('level','?').upper()}"
+        f"📍 {city} | {temp_now}°C — {hum_now}% ẩm — Gió {wind_now} km/h"
+        + (f" | VPD {vpd_now} kPa" if vpd_now else "")
+        + f" | 🦠 {risk_icon} {dp.get('level','?').upper()}"
     )
 
-    # Chi giu 50 tin nhan gan nhat
-    chat_history = data.get("chat_history", [])[-50:]
-    for chat in chat_history:
-        with st.chat_message("user"):
-            st.write(chat["user"])
-        with st.chat_message("assistant"):
-            st.markdown(chat["ai"])
+    # 2 che do chat
+    col_mode1, col_mode2 = st.columns(2)
+    with col_mode1:
+        if st.button(
+            "🌱 Hỏi về vườn của mình",
+            type="primary" if not st.session_state.get("chat_guest_mode") else "secondary",
+            use_container_width=True, key="btn_mode_my_garden"
+        ):
+            st.session_state["chat_guest_mode"] = False
+            st.rerun()
+    with col_mode2:
+        if st.button(
+            "🌍 Hỏi chung (không lưu)",
+            type="primary" if st.session_state.get("chat_guest_mode") else "secondary",
+            use_container_width=True, key="btn_mode_guest"
+        ):
+            st.session_state["chat_guest_mode"] = True
+            st.session_state.pop("guest_chat_history", None)
+            st.rerun()
 
-    if prompt := st.chat_input("Hỏi AI về kỹ thuật vườn, phân bón, sâu bệnh..."):
-        with st.chat_message("user"):
-            st.write(prompt)
+    guest_mode = st.session_state.get("chat_guest_mode", False)
 
-        with st.spinner("🤖 AI đang phân tích dữ liệu..."):
-            try:
-                # Tổng hợp nhật ký tất cả cây trong vườn
-                plant_history = []
-                for pl in data.get("plants", []):
-                    try:
-                        pd_ = datetime.strptime(pl["date"], "%Y-%m-%d")
-                        age_days = max((datetime.now() - pd_).days, 0)
-                    except (ValueError, KeyError):
-                        age_days = 0
+    if guest_mode:
+        st.info("🌍 **Hỏi chung** — Không lưu, dùng khi hỏi cho người khác.")
+    else:
+        st.info("🌱 **Vườn của mình** — AI đối chiếu nhật ký để tư vấn sát thực tế.")
 
-                    parts_     = pl["name"].split("|", 1)
-                    crop_name_ = parts_[1].strip() if len(parts_) > 1 else parts_[0].strip()
+    # Hien thi lich su chat
+    if guest_mode:
+        guest_history = st.session_state.get("guest_chat_history", [])
+        for chat in guest_history:
+            with st.chat_message("user"):
+                st.write(chat["user"])
+            with st.chat_message("assistant"):
+                st.markdown(chat["ai"])
 
-                    recent_logs = " → ".join([
-                        f"{l['d']}: {l['c']}" for l in pl.get("logs", [])[-5:]
-                    ])
+        # Gioi han 10 cau hoi khach
+        if len(guest_history) >= 10:
+            st.warning("⚠️ Đã đạt giới hạn 10 câu hỏi. Nhấn để bắt đầu lại.")
+            if st.button("🔄 Bắt đầu hội thoại mới", key="btn_reset_guest"):
+                st.session_state["guest_chat_history"] = []
+                st.rerun()
+        if guest_history:
+            if st.button("🗑️ Xóa hội thoại", key="btn_clear_guest"):
+                st.session_state["guest_chat_history"] = []
+                st.rerun()
+    else:
+        # Gioi han 20 tin nhan
+        chat_history = data.get("chat_history", [])[-20:]
+        for chat in chat_history:
+            with st.chat_message("user"):
+                st.write(chat["user"])
+            with st.chat_message("assistant"):
+                st.markdown(chat["ai"])
 
-                    plant_history.append(
-                        f"• {crop_name_} ({age_days} ngày tuổi)"
-                        + (f"\n  Nhật ký gần nhất: {recent_logs}" if recent_logs
-                           else "\n  Nhật ký: Chưa có")
-                        + (f"\n  Dự kiến thu hoạch: {pl['date_harvest']}"
-                           if pl.get("date_harvest") else "")
+        if data.get("chat_history"):
+            col_del1, col_del2 = st.columns(2)
+            with col_del1:
+                if st.button("🗑️ Xóa tin cuối", key="btn_del_last"):
+                    data["chat_history"] = data["chat_history"][:-1]
+                    save_data(data)
+                    st.rerun()
+            with col_del2:
+                if st.button("🗑️ Xóa tất cả", key="btn_clear_all"):
+                    data["chat_history"] = []
+                    save_data(data)
+                    st.rerun()
+
+    # Kiem tra gioi han truoc khi cho nhap
+    guest_history = st.session_state.get("guest_chat_history", [])
+    can_chat = not guest_mode or len(guest_history) < 10
+
+    if can_chat:
+        if prompt := st.chat_input("Hỏi AI về kỹ thuật vườn, phân bón, sâu bệnh..."):
+            with st.chat_message("user"):
+                st.write(prompt)
+
+            with st.spinner("🤖 AI đang phân tích..."):
+                try:
+                    # Tong hop nhat ky cay (chi trong che do vuon minh)
+                    if not guest_mode:
+                        plant_history = []
+                        for pl in data.get("plants", []):
+                            si_      = get_current_stage(pl)
+                            parts_   = pl["name"].split("|", 1)
+                            cname_   = parts_[1].strip() if len(parts_) > 1 else parts_[0].strip()
+                            logs_    = " → ".join([f"{l['d']}: {l['c']}"
+                                                   for l in pl.get("logs", [])[-3:]])
+                            plant_history.append(
+                                f"• {cname_} ({si_['age']} ngày — {si_['label']})"
+                                + (f"\n  Nhật ký: {logs_}" if logs_ else "")
+                                + (f"\n  Thu hoạch: {pl['date_harvest']}"
+                                   if pl.get("date_harvest") else "")
+                            )
+                        garden_ctx = (
+                            "=== CÂY TRONG VƯỜN ===\n" + "\n".join(plant_history)
+                            if plant_history else ""
+                        )
+                    else:
+                        garden_ctx = ""
+
+                    w_ctx = (
+                        f"Nhiệt độ {temp_now}°C, Độ ẩm {hum_now}%, Gió {wind_now} km/h"
+                        + (f", VPD {vpd_now} kPa ({vpd_label})" if vpd_now else "")
+                        + f". Áp lực bệnh: {dp.get('level','?').upper()} "
+                        f"(score {dp.get('score',0)}/100)"
                     )
 
-                plant_history_str = (
-                    "\n".join(plant_history)
-                    if plant_history
-                    else "Chưa có cây nào trong vườn."
-                )
+                    full_prompt = f"""
+Bạn là Chuyên gia Nông nghiệp, đang tư vấn cho {"chủ vườn" if not guest_mode else "nông dân"}.
+Trả lời BẰNG TIẾNG VIỆT, tối đa 200 từ, ngắn gọn, dễ hiểu.
 
-                w_ctx = (
-                    f"Nhiệt độ {temp_now}°C, Độ ẩm {hum_now}%, "
-                    f"Gió {wind_now} km/h, {desc_now}"
-                    + (f", VPD {vpd_now} kPa ({vpd_label})" if vpd_now else "")
-                    + f". Áp lực bệnh 48h: {dp.get('level','?').upper()} "
-                    f"(score {dp.get('score',0)}/100)"
-                )
-
-                full_prompt = f"""
-Bạn là Chuyên gia Nông nghiệp Công nghệ cao, đang tư vấn trực tiếp cho chủ vườn.
-Trả lời BẰNG TIẾNG VIỆT, ngắn gọn và sát thực tế.
-
-=== MÔI TRƯỜNG HIỆN TẠI tại {city} ===
+=== THỜI TIẾT tại {city} ===
 {w_ctx}
-
-=== TÌNH TRẠNG CÁC CÂY TRONG VƯỜN ===
-{plant_history_str}
-
-=== CÂU HỎI CỦA NÔNG DÂN ===
+{garden_ctx}
+=== CÂU HỎI ===
 {prompt}
 
-Yêu cầu khi trả lời:
-- Nếu câu hỏi liên quan đến cây cụ thể trong vườn → đối chiếu với nhật ký
-  của cây đó để trả lời SÁT THỰC TẾ, không trả lời chung chung.
-- Nếu nhật ký có dấu hiệu bất thường liên quan → chủ động đề cập và cảnh báo.
-- Ưu tiên giải pháp hữu cơ/sinh học, chỉ đề xuất hóa học khi thực sự cần.
-- Có tính đến VPD và áp lực bệnh 48h khi tư vấn tưới tiêu và phòng bệnh.
-- Dùng Markdown (###, **, -) để trình bày rõ ràng.
-QUAN TRỌNG: Tối đa 300 từ. Đi thẳng vào vấn đề."""
-                response = model.generate_content(
-                    full_prompt,
-                    request_options={"timeout": 60}
-                )
-                ai_res = (
-                    response.text if hasattr(response, "text")
-                    else "⚠️ AI không thể trả lời câu hỏi này."
-                )
+Yêu cầu:
+{"- Đối chiếu nhật ký cây để tư vấn SÁT THỰC TẾ." if not guest_mode else "- Trả lời tổng quát."}
+- Ưu tiên giải pháp hữu cơ/sinh học.
+- Có tính đến VPD và áp lực bệnh khi tư vấn.
+- Dùng Markdown để trình bày rõ ràng.
+"""
+                    response = model.generate_content(
+                        full_prompt,
+                        request_options={"timeout": 60}
+                    )
+                    ai_res = (
+                        response.text if hasattr(response, "text")
+                        else "⚠️ AI không thể trả lời."
+                    )
 
-                with st.chat_message("assistant"):
-                    st.markdown(ai_res)
+                    with st.chat_message("assistant"):
+                        st.markdown(ai_res)
 
-                add_chat(data, prompt, ai_res)
-                if len(data.get("chat_history", [])) > 50:
-                    data["chat_history"] = data["chat_history"][-50:]
-                save_data(data)
-                st.rerun()
+                    if guest_mode:
+                        guest_history.append({"user": prompt, "ai": ai_res})
+                        st.session_state["guest_chat_history"] = guest_history
+                    else:
+                        add_chat(data, prompt, ai_res)
+                        if len(data.get("chat_history", [])) > 20:
+                            data["chat_history"] = data["chat_history"][-20:]
+                        save_data(data)
+                    st.rerun()
 
-            except Exception as e:
-                st.error(f"⚠️ Lỗi kết nối AI: {e}")
-                st.info("Kiểm tra lại GEMINI_API_KEY trong file secrets.")
+                except Exception as e:
+                    st.error(f"⚠️ Lỗi kết nối AI: {e}")
+                    st.info("Kiểm tra lại GEMINI_API_KEY trong file secrets.")                    
+                    
