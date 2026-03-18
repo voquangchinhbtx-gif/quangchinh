@@ -299,22 +299,22 @@ def get_forecast_7day(lat: float, lon: float) -> list:
 # ÁP LỰC BỆNH 48H
 # =============================================================
 
-def get_disease_pressure_48h(lat: float, lon: float) -> dict:
+def get_disease_pressure_7day(lat: float, lon: float) -> dict:
     url = (
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
         f"&hourly=temperature_2m,relative_humidity_2m,weather_code"
-        f"&timezone=auto&forecast_days=2"
+        f"&timezone=auto&forecast_days=7"
     )
     try:
         res = _session.get(url, timeout=8)
         res.raise_for_status()
         hourly = res.json().get("hourly", {})
 
-        times = hourly.get("time", [])[:48]
-        temps = hourly.get("temperature_2m", [])[:48]
-        hums  = hourly.get("relative_humidity_2m", [])[:48]
-        codes = hourly.get("weather_code", [])[:48]
+        times = hourly.get("time", [])[:168]
+        temps = hourly.get("temperature_2m", [])[:168]
+        hums  = hourly.get("relative_humidity_2m", [])[:168]
+        codes = hourly.get("weather_code", [])[:168]
 
         hours_risk  = 0
         score_total = 0
@@ -351,34 +351,37 @@ def get_disease_pressure_48h(lat: float, lon: float) -> dict:
                 "score": s,
             })
 
-        score    = min(int(score_total / (10 * 48) * 100), 100)
+        score    = min(int(score_total / (10 * 168) * 100), 100)
         warnings = []
 
-        if score >= 60 or hours_risk >= 20:
+        if score >= 60 or hours_risk >= 50:
             level = "critical"
             warnings.append(
-                "⛔ ÁP LỰC BỆNH CỰC CAO: Nấm và vi khuẩn sẽ bùng phát "
-                "trong 48h. Xử lý ngay!"
+                "⛔ Nguy cơ bệnh rất cao trong 7 ngày tới. "
+                "Nên xử lý phòng ngừa ngay!"
             )
-        elif score >= 40 or hours_risk >= 12:
+        elif score >= 40 or hours_risk >= 30:
             level = "high"
             warnings.append(
-                "🔴 Áp lực bệnh cao: Điều kiện rất thuận lợi cho nấm bệnh phát triển."
+                "🔴 Nguy cơ bệnh cao: Điều kiện thuận lợi cho nấm bệnh "
+                "trong tuần tới. Nên phun phòng ngừa."
             )
-        elif score >= 20 or hours_risk >= 6:
+        elif score >= 20 or hours_risk >= 15:
             level = "medium"
             warnings.append(
-                "🟡 Áp lực bệnh trung bình: Cần theo dõi chặt và phun phòng ngừa."
+                "🟡 Nguy cơ trung bình: Nên theo dõi và "
+                "chuẩn bị thuốc phòng ngừa."
             )
         else:
             level = "low"
             warnings.append(
-                "🟢 Áp lực bệnh thấp: Điều kiện khá an toàn trong 48h tới."
+                "🟢 Nguy cơ thấp: Điều kiện khá an toàn "
+                "trong 7 ngày tới."
             )
 
-        if hours_risk >= 6:
+        if hours_risk >= 15:
             warnings.append(
-                f"⏰ Có {hours_risk} giờ nguy hiểm trong 48h, "
+                f"⏰ Có {hours_risk} giờ nguy hiểm trong 7 ngày, "
                 f"cao điểm lúc {peak_time}. "
                 "Ưu tiên phun Trichoderma hoặc Nano Bạc trước giờ cao điểm."
             )
@@ -393,7 +396,7 @@ def get_disease_pressure_48h(lat: float, lon: float) -> dict:
         }
 
     except Exception as e:
-        print(f"Lỗi áp lực bệnh 48h: {e}")
+        print(f"Lỗi nguy cơ bệnh 7 ngày: {e}")
         return {
             "level":      "unknown",
             "score":      0,
