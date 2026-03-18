@@ -5,8 +5,6 @@ weather.py - GREEN FARM
 
 import math
 import requests
-from functools import lru_cache
-
 _session = requests.Session()
 _session.headers.update({"User-Agent": "GreenFarm/1.0 (greenfarm@example.com)"})
 
@@ -14,6 +12,63 @@ DEFAULT_LAT  = 16.45780
 DEFAULT_LON  = 107.56150
 DEFAULT_CITY = "Kim Long, Huế (Mặc định)"
 
+_CITY_DB = [
+    (16.45780, 107.56150, "Kim Long, Huế"),
+    (16.4637,  107.5909,  "Huế"),
+    (21.0285,  105.8542,  "Hà Nội"),
+    (10.7769,  106.7009,  "TP. Hồ Chí Minh"),
+    (16.0544,  108.2022,  "Đà Nẵng"),
+    (10.0452,  105.7469,  "Cần Thơ"),
+    (12.2388,  109.1967,  "Nha Trang"),
+    (20.8449,  106.6881,  "Hải Phòng"),
+    (10.9574,  106.8426,  "Biên Hòa"),
+    (11.9465,  108.4419,  "Đà Lạt"),
+    (13.0827,  109.2925,  "Quy Nhơn"),
+    (15.8794,  108.3350,  "Hội An"),
+    (17.4667,  106.6000,  "Đồng Hới"),
+    (22.3331,  103.8481,  "Lào Cai"),
+]
+
+
+def get_city_name(lat: float, lon: float) -> str:
+    """
+    Trả về tên thành phố gần nhất.
+    Ưu tiên lookup nhanh từ _CITY_DB,
+    chỉ gọi Nominatim nếu không tìm thấy trong bản đồ.
+    """
+    lat = round(lat, 4)
+    lon = round(lon, 4)
+
+    # Tìm thành phố gần nhất trong database
+    min_dist = float("inf")
+    nearest  = DEFAULT_CITY
+
+    for city_lat, city_lon, city_name in _CITY_DB:
+        dist = ((lat - city_lat) ** 2 + (lon - city_lon) ** 2) ** 0.5
+        if dist < min_dist:
+            min_dist = dist
+            nearest  = city_name
+
+    # Trong bán kính 0.3 độ (~30km) → trả về luôn, không gọi API
+    if min_dist <= 0.3:
+        return nearest
+
+    # Xa hơn → gọi Nominatim
+    try:
+        url = (
+            f"https://nominatim.openstreetmap.org/reverse"
+            f"?lat={lat}&lon={lon}&format=json&accept-language=vi"
+        )
+        res = _session.get(url, timeout=5)
+        res.raise_for_status()
+        addr = res.json().get("address", {})
+        return (
+            addr.get("city") or addr.get("town") or
+            addr.get("village") or addr.get("county") or
+            nearest
+        )
+    except Exception:
+        return nearest
 WEATHER_MAP = {
     -1: "Dữ liệu ngoại tuyến",
     0:  "Trời quang, nắng ráo",  1:  "Phần lớn quang đãng",
