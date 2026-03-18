@@ -3,6 +3,7 @@
 weather.py - GREEN FARM
 """
 
+import math
 import requests
 from functools import lru_cache
 
@@ -31,7 +32,23 @@ _CODE_CLEAR   = {0, 1}
 _CODE_FOG     = {45, 48}
 _WIND_CAUTION = 20
 _WIND_DANGER  = 40
+
+# =============================================================
+# VPD
+# =============================================================
+
 def calculate_vpd(temp: float, hum: float) -> float:
+    """
+    Tính Vapor Pressure Deficit (kPa).
+    VPD = e_sat - e_actual
+
+    Phân loại cho cây trồng:
+      < 0.4 kPa : Quá ẩm — nguy cơ nấm bệnh cao
+      0.4–0.8   : Lý tưởng cho cây con và giai đoạn ra hoa
+      0.8–1.2   : Tối ưu cho hầu hết cây trồng
+      1.2–1.6   : Cây bắt đầu thoát hơi nước mạnh
+      > 1.6 kPa : Stress nước — cây dễ héo, giảm đậu trái
+    """
     if temp is None or hum is None:
         return None
     e_sat    = 0.61078 * math.exp((17.27 * temp) / (temp + 237.3))
@@ -76,6 +93,9 @@ def get_vpd_status(vpd: float) -> dict:
                        "giảm đậu trái. Tưới ngay và che nắng gấp."
         }
 
+# =============================================================
+# REVERSE GEOCODING
+# =============================================================
 
 @lru_cache(maxsize=256)
 def _geocode_cached(lat_r: float, lon_r: float) -> str:
@@ -112,14 +132,20 @@ def _geocode_cached(lat_r: float, lon_r: float) -> str:
 def get_city_name(lat: float, lon: float) -> str:
     return _geocode_cached(round(lat, 2), round(lon, 2))
 
+# =============================================================
+# CẢNH BÁO NÔNG NGHIỆP
+# =============================================================
 
 def get_agri_warnings(temp, hum, code: int,
                       wind: float = 0.0,
                       vpd: float = None) -> list:
+    if temp is None or hum is None:
+        return ["⏳ Đang chờ dữ liệu cảm biến..."]
 
     warnings = []
     wind = wind or 0.0
 
+    # Nấm bệnh theo độ ẩm
     if hum > 85:
         if temp < 24:
             warnings.append(
@@ -137,30 +163,35 @@ def get_agri_warnings(temp, hum, code: int,
             "Điều kiện oi nóng ẩm rất thuận lợi cho Ralstonia solanacearum."
         )
 
+    # Côn trùng
     if code in _CODE_CLEAR and temp > 32:
         warnings.append(
             "🚫 Cảnh báo Bọ trĩ / Nhện đỏ: Thời tiết khô nóng "
             "giúp côn trùng chích hút sinh sản mạnh. Kiểm tra mặt dưới lá."
         )
 
+    # Mưa
     if (51 <= code <= 67) or (80 <= code <= 82):
         warnings.append(
             "🛡️ Lưu ý: Mưa có thể rửa trôi phân bón & thuốc BVTV. "
             "Che chắn luống rau, kiểm tra thoát nước mương rãnh."
         )
 
+    # Dông bão
     if 95 <= code <= 99:
         warnings.append(
             "⛈️ Cảnh báo Dông bão: Gió mạnh có thể gãy cành, đổ cây. "
             "Cắm cọc chống đỡ và buộc thân cây trước khi dông đến."
         )
 
+    # Sương mù
     if code in _CODE_FOG:
         warnings.append(
             "🌫️ Lưu ý: Sương mù giữ ẩm trên lá lâu, "
             "dễ gây đốm lá & bệnh nấm. Theo dõi sát buổi sáng."
         )
 
+    # Gió
     if wind >= _WIND_DANGER:
         warnings.append(
             f"💨 CẢNH BÁO GIÓ MẠNH ({wind:.0f} km/h): Nguy cơ cao đổ ngã cây. "
@@ -172,8 +203,24 @@ def get_agri_warnings(temp, hum, code: int,
             "Kiểm tra dây buộc và cọc chống."
         )
 
+    # VPD
+    if vpd is not None:
+        if vpd < 0.4:
+            warnings.append(
+                f"🌫️ VPD = {vpd:.2f} kPa — Quá ẩm: môi trường lý tưởng "
+                "cho nấm bệnh và thối rễ. Tăng thông gió, kiểm tra thoát nước."
+            )
+        elif vpd > 1.6:
+            warnings.append(
+                f"☀️ VPD = {vpd:.2f} kPa — Stress nước: cây đang thoát hơi "
+                "quá mạnh. Tưới ngay, che nắng buổi 11h-14h."
+            )
+
     return warnings if warnings else ["✅ Thời tiết hiện tại rất ổn định cho canh tác."]
 
+# =============================================================
+# DỰ BÁO 7 NGÀY
+# =============================================================
 
 def get_forecast_7day(lat: float, lon: float) -> list:
     url = (
@@ -226,6 +273,9 @@ def get_forecast_7day(lat: float, lon: float) -> list:
         print(f"Lỗi dự báo 7 ngày: {e}")
         return []
 
+# =============================================================
+# ÁP LỰC BỆNH 48H
+# =============================================================
 
 def get_disease_pressure_48h(lat: float, lon: float) -> dict:
     url = (
@@ -284,20 +334,30 @@ def get_disease_pressure_48h(lat: float, lon: float) -> dict:
 
         if score >= 60 or hours_risk >= 20:
             level = "critical"
-            warnings.append("⛔ ÁP LỰC BỆNH CỰC CAO: Nấm và vi khuẩn sẽ bùng phát trong 48h. Xử lý ngay!")
+            warnings.append(
+                "⛔ ÁP LỰC BỆNH CỰC CAO: Nấm và vi khuẩn sẽ bùng phát "
+                "trong 48h. Xử lý ngay!"
+            )
         elif score >= 40 or hours_risk >= 12:
             level = "high"
-            warnings.append("🔴 Áp lực bệnh cao: Điều kiện rất thuận lợi cho nấm bệnh phát triển.")
+            warnings.append(
+                "🔴 Áp lực bệnh cao: Điều kiện rất thuận lợi cho nấm bệnh phát triển."
+            )
         elif score >= 20 or hours_risk >= 6:
             level = "medium"
-            warnings.append("🟡 Áp lực bệnh trung bình: Cần theo dõi chặt và phun phòng ngừa.")
+            warnings.append(
+                "🟡 Áp lực bệnh trung bình: Cần theo dõi chặt và phun phòng ngừa."
+            )
         else:
             level = "low"
-            warnings.append("🟢 Áp lực bệnh thấp: Điều kiện khá an toàn trong 48h tới.")
+            warnings.append(
+                "🟢 Áp lực bệnh thấp: Điều kiện khá an toàn trong 48h tới."
+            )
 
         if hours_risk >= 6:
             warnings.append(
-                f"⏰ Có {hours_risk} giờ nguy hiểm trong 48h, cao điểm lúc {peak_time}. "
+                f"⏰ Có {hours_risk} giờ nguy hiểm trong 48h, "
+                f"cao điểm lúc {peak_time}. "
                 "Ưu tiên phun Trichoderma hoặc Nano Bạc trước giờ cao điểm."
             )
 
@@ -313,11 +373,17 @@ def get_disease_pressure_48h(lat: float, lon: float) -> dict:
     except Exception as e:
         print(f"Lỗi áp lực bệnh 48h: {e}")
         return {
-            "level": "unknown", "score": 0, "hours_risk": 0,
-            "peak_time": "", "warnings": ["Không lấy được dữ liệu dự báo."],
-            "hourly": [],
+            "level":      "unknown",
+            "score":      0,
+            "hours_risk": 0,
+            "peak_time":  "",
+            "warnings":   ["Không lấy được dữ liệu dự báo."],
+            "hourly":     [],
         }
 
+# =============================================================
+# HÀM CHÍNH
+# =============================================================
 
 def get_weather(lat=None, lon=None) -> dict:
     try:
@@ -349,18 +415,22 @@ def get_weather(lat=None, lon=None) -> dict:
         temp = curr.get("temperature_2m")
         hum  = curr.get("relative_humidity_2m")
         wind = round(curr.get("wind_speed_10m") or 0.0, 1)
+        vpd        = calculate_vpd(temp, hum)
+        vpd_status = get_vpd_status(vpd)
 
         return {
-            "temp": temp,
-            "hum":  hum,
-            "wind": wind,
-            "rain": curr.get("precipitation") or 0,
-            "desc": WEATHER_MAP.get(code, "Ổn định"),
-            "code": code,
-            "lat":  lat,
-            "lon":  lon,
-            "city": city,
-            "agri_warnings": get_agri_warnings(temp, hum, code, wind),
+            "temp":       temp,
+            "hum":        hum,
+            "wind":       wind,
+            "rain":       curr.get("precipitation") or 0,
+            "desc":       WEATHER_MAP.get(code, "Ổn định"),
+            "code":       code,
+            "vpd":        vpd,
+            "vpd_status": vpd_status,
+            "lat":        lat,
+            "lon":        lon,
+            "city":       city,
+            "agri_warnings": get_agri_warnings(temp, hum, code, wind, vpd),
         }
 
     except requests.exceptions.Timeout:
@@ -373,22 +443,19 @@ def get_weather(lat=None, lon=None) -> dict:
         print(f"📦 Dữ liệu không hợp lệ: {e}")
     except Exception as e:
         print(f"❌ Lỗi không xác định: {e}")
-if vpd is not None:
-        if vpd < 0.4:
-            warnings.append(
-                f"🌫️ VPD = {vpd:.2f} kPa — Quá ẩm: môi trường lý tưởng "
-                "cho nấm bệnh và thối rễ. Tăng thông gió, kiểm tra thoát nước."
-            )
-        elif vpd > 1.6:
-            warnings.append(
-                f"☀️ VPD = {vpd:.2f} kPa — Stress nước: cây đang thoát hơi "
-                "quá mạnh. Tưới ngay, che nắng buổi 11h-14h."
-            )
 
-    return warnings if warnings else ["✅ Thời tiết hiện tại rất ổn định cho canh tác."]
+    # Fallback offline
     return {
-        "temp": None, "hum": None, "wind": None, "rain": None,
-        "desc": "Dữ liệu dự phòng (offline)",
-        "code": -1, "lat": lat, "lon": lon, "city": city,
+        "temp":       None,
+        "hum":        None,
+        "wind":       None,
+        "rain":       None,
+        "desc":       WEATHER_MAP[-1],
+        "code":       -1,
+        "vpd":        None,
+        "vpd_status": get_vpd_status(None),
+        "lat":        lat,
+        "lon":        lon,
+        "city":       city,
         "agri_warnings": ["⚠️ Không lấy được dữ liệu thời tiết. Kiểm tra kết nối mạng."],
     }
