@@ -31,6 +31,50 @@ _CODE_CLEAR   = {0, 1}
 _CODE_FOG     = {45, 48}
 _WIND_CAUTION = 20
 _WIND_DANGER  = 40
+def calculate_vpd(temp: float, hum: float) -> float:
+    if temp is None or hum is None:
+        return None
+    e_sat    = 0.61078 * math.exp((17.27 * temp) / (temp + 237.3))
+    e_actual = e_sat * (hum / 100)
+    return round(e_sat - e_actual, 3)
+
+
+def get_vpd_status(vpd: float) -> dict:
+    if vpd is None:
+        return {"level": "unknown", "label": "Không có dữ liệu", "warning": None}
+    if vpd < 0.4:
+        return {
+            "level":   "danger_low",
+            "label":   f"⚠️ Quá ẩm ({vpd:.2f} kPa)",
+            "warning": "VPD quá thấp — môi trường lý tưởng cho nấm bệnh, "
+                       "thối rễ và mốc. Tăng thông gió, giảm tưới."
+        }
+    elif vpd < 0.8:
+        return {
+            "level":   "good_low",
+            "label":   f"✅ Lý tưởng — cây con ({vpd:.2f} kPa)",
+            "warning": None
+        }
+    elif vpd < 1.2:
+        return {
+            "level":   "optimal",
+            "label":   f"✅ Tối ưu ({vpd:.2f} kPa)",
+            "warning": None
+        }
+    elif vpd < 1.6:
+        return {
+            "level":   "caution",
+            "label":   f"🟡 Thoát hơi nước mạnh ({vpd:.2f} kPa)",
+            "warning": "VPD cao — cây đang thoát hơi nước mạnh. "
+                       "Tăng tưới, che nắng buổi trưa nếu cần."
+        }
+    else:
+        return {
+            "level":   "danger_high",
+            "label":   f"🔴 Stress nước ({vpd:.2f} kPa)",
+            "warning": "VPD quá cao — cây dễ héo, đóng khí khổng, "
+                       "giảm đậu trái. Tưới ngay và che nắng gấp."
+        }
 
 
 @lru_cache(maxsize=256)
