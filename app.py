@@ -22,7 +22,7 @@ from database import (
 from streamlit_js_eval import get_geolocation
 from weather import (
     get_weather, get_city_name,
-    get_forecast_7day, get_disease_pressure_48h
+    get_forecast_7day, get_disease_pressure_168h
 )
 
 # =============================================================
@@ -258,7 +258,7 @@ def fetch_forecast_7day(lat: float, lon: float) -> list:
 
 @st.cache_data(ttl=600)
 def fetch_disease_pressure(lat: float, lon: float) -> dict:
-    return get_disease_pressure_48h(lat, lon)
+    return get_disease_pressure_7 ngày(lat, lon)
 
 
 # =============================================================
@@ -384,11 +384,11 @@ def render_forecast_7day(lat: float, lon: float):
     st.caption("🟢 An toàn  🟡 Theo dõi  🔴 Nguy cơ  ⛔ Nguy hiểm")
 
 # =============================================================
-# COMPONENT: ÁP LỰC BỆNH 48H
+# COMPONENT: ÁP LỰC BỆNH 7 ngày
 # =============================================================
 
-def render_disease_pressure_48h(lat: float, lon: float):
-    st.markdown("### 🦠 Áp lực bệnh 48h")
+def render_disease_pressure_7 ngày(lat: float, lon: float):
+    st.markdown("### 🦠 Áp lực bệnh 7 ngày")
     dp = fetch_disease_pressure(lat, lon)
 
     level      = dp.get("level", "unknown")
@@ -400,7 +400,7 @@ def render_disease_pressure_48h(lat: float, lon: float):
     col1, col2, col3 = st.columns(3)
     icon = RISK_COLOR.get(level, "⚪")
     col1.metric("Mức độ rủi ro", f"{icon} {level.upper()}", f"Score: {score}/100")
-    col2.metric("Giờ nguy hiểm", f"{hours_risk}h / 48h")
+    col2.metric("Giờ nguy hiểm", f"{hours_risk}h / 7 ngày")
     col3.metric("Cao điểm",      peak_time if peak_time else "N/A")
     st.progress(min(score, 100))
 
@@ -433,7 +433,7 @@ def render_disease_pressure_48h(lat: float, lon: float):
                 ]
             )
             .properties(
-                title=alt.TitleParams("⏱️ Diễn biến áp lực bệnh 48h",
+                title=alt.TitleParams("⏱️ Diễn biến áp lực bệnh 7 ngày",
                                       fontSize=13, anchor="start"),
                 height=200
             )
@@ -592,7 +592,7 @@ if menu == "📊 Dashboard":
         st.divider()
         render_forecast_7day(lat, lon)
         st.divider()
-        render_disease_pressure_48h(lat, lon)
+        render_disease_pressure_7 ngày(lat, lon)
     else:
         st.info("⏳ Đang tải dữ liệu thời tiết...")
 
@@ -733,8 +733,8 @@ elif menu == "🌱 Quản lý Cây trồng":
     if not plants_list:
         st.info("🌵 Vườn chưa có cây. Hãy thêm cây mới ở trên.")
     else:
-        with st.expander("🦠 Áp lực bệnh 48h toàn vườn", expanded=False):
-            render_disease_pressure_48h(lat, lon)
+        with st.expander("🦠 Áp lực bệnh 7 ngày toàn vườn", expanded=False):
+            render_disease_pressure_7 ngày(lat, lon)
 
         for p in plants_list:
             with st.container(border=True):
@@ -1134,7 +1134,7 @@ Vụ trước: {season_ctx}
                             st.metric("💨", f"{weather['wind']} km/h")
                     dp        = fetch_disease_pressure(lat, lon)
                     risk_icon = RISK_COLOR.get(dp.get("level", "unknown"), "⚪")
-                    st.metric("🦠 48h", f"{risk_icon} {dp.get('score',0)}/100")
+                    st.metric("🦠 7 ngày", f"{risk_icon} {dp.get('score',0)}/100")
 # =============================================================
 # 🩺 BÁC SĨ AI & CAMERA
 # =============================================================
@@ -1145,7 +1145,7 @@ elif menu == "🩺 Bác sĩ AI & Camera":
 
     st.info(
         "💡 **Quy trình:** Chụp ảnh → AI tự nhận diện & chẩn đoán "
-        "kết hợp thời tiết + áp lực bệnh 48h.\n\n"
+        "kết hợp thời tiết + áp lực bệnh 7 ngày.\n\n"
         "**Mẹo:** Đủ ánh sáng | Cận cảnh vết bệnh | Để lá lành trong khung."
     )
 
@@ -1206,7 +1206,7 @@ elif menu == "🩺 Bác sĩ AI & Camera":
             )
             agri_warns = weather.get("agri_warnings", [])
             dp_summary = (
-                f"Áp lực bệnh 48h: {dp.get('level','?').upper()} "
+                f"Áp lực bệnh 7 ngày: {dp.get('level','?').upper()} "
                 f"(score {dp.get('score',0)}/100, "
                 f"{dp.get('hours_risk',0)}h nguy hiểm, "
                 f"cao điểm lúc {dp.get('peak_time','?')})"
